@@ -315,28 +315,43 @@
         const [wishlist, setWishlistState] = useState([]);
 
         const isLocalChange = useRef(false);
+        const lastUpdatedAt = useRef(Date.now());
 
         const NTFY_TOPIC = 'fincasal_ai_kevin_milena_7795dc7d';
 
+        const mergeItems = (prev = [], next = []) => {
+          if (!Array.isArray(next)) return prev;
+          if (!Array.isArray(prev)) return next;
+          const map = new Map();
+          prev.forEach(item => { if (item && item.id) map.set(item.id, item); });
+          next.forEach(item => { if (item && item.id) map.set(item.id, item); });
+          return Array.from(map.values());
+        };
+
         const syncToServer = (partialState) => {
           isLocalChange.current = true;
+          const now = Date.now();
+          lastUpdatedAt.current = now;
+
+          const payload = { ...partialState, updatedAt: now };
+
           try {
             const currentLocal = JSON.parse(localStorage.getItem('fincasal_local_db') || '{}');
-            const updatedLocal = { ...currentLocal, ...partialState };
+            const updatedLocal = { ...currentLocal, ...payload };
             localStorage.setItem('fincasal_local_db', JSON.stringify(updatedLocal));
           } catch (e) {}
 
           // 1. Envio em tempo real instantâneo (< 100ms) via canal de transmissão seguro
           fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
             method: 'POST',
-            body: JSON.stringify(partialState)
+            body: JSON.stringify(payload)
           }).catch(err => console.warn('Realtime push offline'));
 
           // 2. Envio para API Cloudflare KV para persistência permanente
           fetch('/api/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(partialState)
+            body: JSON.stringify(payload)
           }).catch(err => console.warn('Sync offline'));
         };
 
@@ -389,6 +404,31 @@
         };
 
         useEffect(() => {
+          const applyStateData = (data) => {
+            if (!data) return;
+            if (data.updatedAt && data.updatedAt < lastUpdatedAt.current) {
+              return; // Ignora dados antigos que poderiam sobrescrever o estado atual do usuário
+            }
+            if (data.updatedAt) {
+              lastUpdatedAt.current = data.updatedAt;
+            }
+
+            if (data.profile) setProfileState(data.profile);
+            if (data.config) setConfigState(data.config);
+
+            if (data.transactions && Array.isArray(data.transactions)) {
+              setTransactionsState(prev => mergeItems(prev, data.transactions));
+            }
+            if (data.chatMessages && Array.isArray(data.chatMessages)) {
+              setChatMessagesState(prev => mergeItems(prev, data.chatMessages));
+            }
+            if (data.wishlist && Array.isArray(data.wishlist)) {
+              setWishlistState(prev => mergeItems(prev, data.wishlist));
+            }
+            if (data.gamification) setGamificationState(data.gamification);
+            setIsSynced(true);
+          };
+
           // Busca inicial do banco de dados KV / LocalStorage
           const fetchSync = () => {
             fetch('/api/sync?_t=' + Date.now(), { cache: 'no-store' })
@@ -397,26 +437,13 @@
                 return res.json();
               })
               .then(data => {
-                if (data) {
-                  if (data.profile) setProfileState(data.profile);
-                  if (data.config) setConfigState(data.config);
-                  if (data.transactions) setTransactionsState(data.transactions);
-                  if (data.chatMessages) setChatMessagesState(data.chatMessages);
-                  if (data.gamification) setGamificationState(data.gamification);
-                  if (data.wishlist) setWishlistState(data.wishlist);
-                  setIsSynced(true);
-                }
+                applyStateData(data);
               }).catch(e => {
                 try {
                   const local = localStorage.getItem('fincasal_local_db');
                   if (local) {
                     const data = JSON.parse(local);
-                    if (data.profile) setProfileState(data.profile);
-                    if (data.config) setConfigState(data.config);
-                    if (data.transactions) setTransactionsState(data.transactions);
-                    if (data.chatMessages) setChatMessagesState(data.chatMessages);
-                    if (data.gamification) setGamificationState(data.gamification);
-                    if (data.wishlist) setWishlistState(data.wishlist);
+                    applyStateData(data);
                   }
                 } catch (err) {}
               });
@@ -433,19 +460,13 @@
                 const payload = JSON.parse(event.data);
                 if (payload && payload.message) {
                   const data = JSON.parse(payload.message);
-                  if (data.profile) setProfileState(data.profile);
-                  if (data.config) setConfigState(data.config);
-                  if (data.transactions) setTransactionsState(data.transactions);
-                  if (data.chatMessages) setChatMessagesState(data.chatMessages);
-                  if (data.gamification) setGamificationState(data.gamification);
-                  if (data.wishlist) setWishlistState(data.wishlist);
-                  setIsSynced(true);
+                  applyStateData(data);
                 }
               } catch (err) {}
             };
           } catch (e) {}
 
-          const pollTimer = setInterval(fetchSync, 3000);
+          const pollTimer = setInterval(fetchSync, 4000);
 
           return () => {
             clearInterval(pollTimer);
