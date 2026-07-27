@@ -318,11 +318,17 @@
 
         const syncToServer = (partialState) => {
           isLocalChange.current = true;
+          try {
+            const currentLocal = JSON.parse(localStorage.getItem('fincasal_local_db') || '{}');
+            const updatedLocal = { ...currentLocal, ...partialState };
+            localStorage.setItem('fincasal_local_db', JSON.stringify(updatedLocal));
+          } catch (e) {}
+
           fetch('/api/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(partialState)
-          }).catch(err => console.error('Erro na sincronização:', err));
+          }).catch(err => console.warn('Sync offline'));
         };
 
         const setTransactions = (updater) => {
@@ -376,7 +382,10 @@
         useEffect(() => {
           const fetchSync = () => {
             fetch('/api/sync')
-              .then(res => res.json())
+              .then(res => {
+                if (!res.ok) throw new Error('Servidor backend não encontrado neste domínio');
+                return res.json();
+              })
               .then(data => {
                 if (data) {
                   if (data.profile) setProfileState(data.profile);
@@ -387,7 +396,20 @@
                   if (data.wishlist) setWishlistState(data.wishlist);
                   setIsSynced(true);
                 }
-              }).catch(e => console.warn('Sync offline'));
+              }).catch(e => {
+                try {
+                  const local = localStorage.getItem('fincasal_local_db');
+                  if (local) {
+                    const data = JSON.parse(local);
+                    if (data.profile) setProfileState(data.profile);
+                    if (data.config) setConfigState(data.config);
+                    if (data.transactions) setTransactionsState(data.transactions);
+                    if (data.chatMessages) setChatMessagesState(data.chatMessages);
+                    if (data.gamification) setGamificationState(data.gamification);
+                    if (data.wishlist) setWishlistState(data.wishlist);
+                  }
+                } catch (err) {}
+              });
           };
 
           fetchSync();

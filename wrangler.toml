@@ -1,8 +1,8 @@
 name = "fincasal-ai"
-pages_build_output_dir = "."
+compatibility_date = "2026-07-27"
 
-[vars]
-ENVIRONMENT = "production"
+[assets]
+directory = "."
 
 [[kv_namespaces]]
 binding = "FINCASAL_KV"
