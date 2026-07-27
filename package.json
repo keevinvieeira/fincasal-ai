@@ -4,24 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host",
-    "build": "vite build",
-    "lint": "oxlint",
-    "preview": "vite preview"
+    "dev": "node server.cjs",
+    "build": "node -e \"const fs=require('fs'); fs.mkdirSync('dist', {recursive: true}); fs.copyFileSync('index.html', 'dist/index.html'); fs.copyFileSync('manifest.json', 'dist/manifest.json'); console.log('Dist created successfully!');\"",
+    "start": "node server.cjs"
   },
   "dependencies": {
-    "canvas-confetti": "^1.9.4",
-    "clsx": "^2.1.1",
-    "lucide-react": "^1.16.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "recharts": "^2.15.1"
-  },
-  "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "oxlint": "^0.15.1",
-    "vite": "^6.0.0"
+    "canvas-confetti": "^1.9.4"
   }
 }
