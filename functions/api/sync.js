@@ -50,7 +50,7 @@ const DEFAULT_STATE = {
       { id: 'b3', icon: '🛍️', title: 'Primeiro Desejo Realizado', description: 'Comprou um item da Wishlist com XP', unlocked: false }
     ]
   },
-  updatedAt: Date.now()
+  updatedAt: 1700000000000
 };
 
 function getSecureCorsHeaders() {
@@ -90,7 +90,7 @@ export async function onRequestPost({ request, env }) {
 
   try {
     const rawBody = await request.text();
-    if (!rawBody || rawBody.length > 2 * 1024 * 1024) { // Max 2MB payload guard
+    if (!rawBody || rawBody.length > 2 * 1024 * 1024) {
       return new Response(JSON.stringify({ success: false, error: 'Payload too large or empty' }), { status: 400, headers: corsHeaders });
     }
 
@@ -99,7 +99,6 @@ export async function onRequestPost({ request, env }) {
       return new Response(JSON.stringify({ success: false, error: 'Invalid JSON payload structure' }), { status: 400, headers: corsHeaders });
     }
 
-    // Whitelist payload keys to prevent prototype pollution and arbitrary injection
     const sanitizedPayload = {};
     for (const key of ALLOWED_KEYS) {
       if (Object.prototype.hasOwnProperty.call(body, key)) {

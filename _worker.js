@@ -47,7 +47,7 @@ const DEFAULT_STATE = {
       { id: 'b3', icon: '🛍️', title: 'Primeiro Desejo Realizado', description: 'Comprou um item da Wishlist com XP', unlocked: false }
     ]
   },
-  updatedAt: Date.now()
+  updatedAt: 1700000000000
 };
 
 function getCorsHeaders() {

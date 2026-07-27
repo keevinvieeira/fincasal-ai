@@ -416,21 +416,43 @@
             if (data.profile) setProfileState(data.profile);
             if (data.config) setConfigState(data.config);
 
+            let updatedLocalState = {};
+            try {
+              updatedLocalState = JSON.parse(localStorage.getItem('fincasal_local_db') || '{}');
+            } catch (e) {}
+
             if (data.transactions && Array.isArray(data.transactions)) {
-              setTransactionsState(prev => mergeItems(prev, data.transactions));
+              setTransactionsState(prev => {
+                const merged = mergeItems(prev, data.transactions);
+                updatedLocalState.transactions = merged;
+                return merged;
+              });
             }
             if (data.chatMessages && Array.isArray(data.chatMessages)) {
-              setChatMessagesState(prev => mergeItems(prev, data.chatMessages));
+              setChatMessagesState(prev => {
+                const merged = mergeItems(prev, data.chatMessages);
+                updatedLocalState.chatMessages = merged;
+                return merged;
+              });
             }
             if (data.wishlist && Array.isArray(data.wishlist)) {
-              setWishlistState(prev => mergeItems(prev, data.wishlist));
+              setWishlistState(prev => {
+                const merged = mergeItems(prev, data.wishlist);
+                updatedLocalState.wishlist = merged;
+                return merged;
+              });
             }
             if (data.gamification) setGamificationState(data.gamification);
+
+            try {
+              localStorage.setItem('fincasal_local_db', JSON.stringify(updatedLocalState));
+            } catch (e) {}
+
             setIsSynced(true);
           };
 
           // Busca inicial do banco de dados KV / LocalStorage
-          const fetchSync = () => {
+          const fetchSync = (isInitial = false) => {
             fetch('/api/sync?_t=' + Date.now(), { cache: 'no-store' })
               .then(res => {
                 if (!res.ok) throw new Error('Servidor backend não encontrado neste domínio');
@@ -439,17 +461,19 @@
               .then(data => {
                 applyStateData(data);
               }).catch(e => {
-                try {
-                  const local = localStorage.getItem('fincasal_local_db');
-                  if (local) {
-                    const data = JSON.parse(local);
-                    applyStateData(data);
-                  }
-                } catch (err) {}
+                if (isInitial) {
+                  try {
+                    const local = localStorage.getItem('fincasal_local_db');
+                    if (local) {
+                      const data = JSON.parse(local);
+                      applyStateData(data);
+                    }
+                  } catch (err) {}
+                }
               });
           };
 
-          fetchSync();
+          fetchSync(true);
 
           // Conexão por eventos Server-Sent Events (SSE) em tempo real instantâneo (<100ms) entre dispositivos
           let ntfyEvtSource;
@@ -466,7 +490,7 @@
             };
           } catch (e) {}
 
-          const pollTimer = setInterval(fetchSync, 4000);
+          const pollTimer = setInterval(() => fetchSync(false), 5000);
 
           return () => {
             clearInterval(pollTimer);
