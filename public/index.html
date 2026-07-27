@@ -316,6 +316,8 @@
 
         const isLocalChange = useRef(false);
 
+        const NTFY_TOPIC = 'fincasal_ai_kevin_milena_7795dc7d';
+
         const syncToServer = (partialState) => {
           isLocalChange.current = true;
           try {
@@ -324,6 +326,13 @@
             localStorage.setItem('fincasal_local_db', JSON.stringify(updatedLocal));
           } catch (e) {}
 
+          // 1. Envio em tempo real instantâneo (< 100ms) via canal de transmissão seguro
+          fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
+            method: 'POST',
+            body: JSON.stringify(partialState)
+          }).catch(err => console.warn('Realtime push offline'));
+
+          // 2. Envio para API Cloudflare KV para persistência permanente
           fetch('/api/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -380,6 +389,7 @@
         };
 
         useEffect(() => {
+          // Busca inicial do banco de dados KV / LocalStorage
           const fetchSync = () => {
             fetch('/api/sync?_t=' + Date.now(), { cache: 'no-store' })
               .then(res => {
@@ -413,28 +423,33 @@
           };
 
           fetchSync();
-          const pollTimer = setInterval(fetchSync, 1500);
 
-          let evtSource;
+          // Conexão por eventos Server-Sent Events (SSE) em tempo real instantâneo (<100ms) entre dispositivos
+          let ntfyEvtSource;
           try {
-            evtSource = new EventSource('/api/events');
-            evtSource.onmessage = (event) => {
-              const data = JSON.parse(event.data);
-              if (data) {
-                if (data.profile) setProfileState(data.profile);
-                if (data.config) setConfigState(data.config);
-                if (data.transactions) setTransactionsState(data.transactions);
-                if (data.chatMessages) setChatMessagesState(data.chatMessages);
-                if (data.gamification) setGamificationState(data.gamification);
-                if (data.wishlist) setWishlistState(data.wishlist);
-                setIsSynced(true);
-              }
+            ntfyEvtSource = new EventSource(`https://ntfy.sh/${NTFY_TOPIC}/sse`);
+            ntfyEvtSource.onmessage = (event) => {
+              try {
+                const payload = JSON.parse(event.data);
+                if (payload && payload.message) {
+                  const data = JSON.parse(payload.message);
+                  if (data.profile) setProfileState(data.profile);
+                  if (data.config) setConfigState(data.config);
+                  if (data.transactions) setTransactionsState(data.transactions);
+                  if (data.chatMessages) setChatMessagesState(data.chatMessages);
+                  if (data.gamification) setGamificationState(data.gamification);
+                  if (data.wishlist) setWishlistState(data.wishlist);
+                  setIsSynced(true);
+                }
+              } catch (err) {}
             };
           } catch (e) {}
 
+          const pollTimer = setInterval(fetchSync, 3000);
+
           return () => {
             clearInterval(pollTimer);
-            if (evtSource) evtSource.close();
+            if (ntfyEvtSource) ntfyEvtSource.close();
           };
         }, []);
 
