@@ -63,10 +63,16 @@ function getCorsHeaders() {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const headers = getCorsHeaders();
+
+    if (url.pathname === '/api/debug') {
+      return new Response(JSON.stringify({
+        hasKV: !!(env && env.FINCASAL_KV),
+        envKeys: env ? Object.keys(env) : []
+      }), { headers });
+    }
 
     if (url.pathname === '/api/sync') {
-      const headers = getCorsHeaders();
-
       if (request.method === 'OPTIONS') {
         return new Response(null, { status: 204, headers });
       }
@@ -107,7 +113,7 @@ export default {
             await env.FINCASAL_KV.put('dbState', JSON.stringify(updatedData));
           }
 
-          return new Response(JSON.stringify({ success: true, updatedAt: updatedData.updatedAt }), { headers });
+          return new Response(JSON.stringify({ success: true, updatedAt: updatedData.updatedAt, kvActive: !!(env && env.FINCASAL_KV) }), { headers });
         } catch (err) {
           return new Response(JSON.stringify({ success: false, error: 'Invalid payload' }), { status: 400, headers });
         }

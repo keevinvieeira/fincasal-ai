@@ -336,6 +336,8 @@
         const stateRef = useRef({});
         stateRef.current = { profile, config, transactions, chatMessages, gamification, wishlist };
 
+        const syncTimerRef = useRef(null);
+
         const NTFY_TOPIC = 'fincasal_room_' + coupleCode.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
         const mergeItems = (prev = [], next = []) => {
@@ -347,14 +349,12 @@
           return Array.from(map.values());
         };
 
-        const syncToServer = (partialState) => {
-          isLocalChange.current = true;
+        const broadcastAtomicState = () => {
           const now = Date.now();
           lastUpdatedAt.current = now;
 
           const fullSnapshot = {
             ...stateRef.current,
-            ...partialState,
             updatedAt: now
           };
 
@@ -362,13 +362,13 @@
             localStorage.setItem('fincasal_local_db', JSON.stringify(fullSnapshot));
           } catch (e) {}
 
-          // 1. Transmissão do Estado Completo em tempo real instantâneo (< 100ms) para o celular/PC do casal
+          // Transmissão do Estado Atômico Completo em tempo real (< 100ms) sem corrida de dados
           fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
             method: 'POST',
             body: JSON.stringify(fullSnapshot)
           }).catch(err => console.warn('Realtime push offline'));
 
-          // 2. Envio para API Cloudflare KV para persistência permanente
+          // API Cloudflare KV para persistência permanente
           fetch('/api/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -376,10 +376,18 @@
           }).catch(err => console.warn('Sync offline'));
         };
 
+        const triggerSync = () => {
+          isLocalChange.current = true;
+          if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+          syncTimerRef.current = setTimeout(() => {
+            broadcastAtomicState();
+          }, 150);
+        };
+
         const setTransactions = (updater) => {
           setTransactionsState(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            syncToServer({ transactions: next });
+            triggerSync();
             return next;
           });
         };
@@ -387,7 +395,7 @@
         const setChatMessages = (updater) => {
           setChatMessagesState(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            syncToServer({ chatMessages: next });
+            triggerSync();
             return next;
           });
         };
@@ -395,7 +403,7 @@
         const setGamification = (updater) => {
           setGamificationState(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            syncToServer({ gamification: next });
+            triggerSync();
             return next;
           });
         };
@@ -403,7 +411,7 @@
         const setWishlist = (updater) => {
           setWishlistState(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            syncToServer({ wishlist: next });
+            triggerSync();
             return next;
           });
         };
@@ -411,7 +419,7 @@
         const setConfig = (updater) => {
           setConfigState(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            syncToServer({ config: next });
+            triggerSync();
             return next;
           });
         };
@@ -419,7 +427,7 @@
         const setProfile = (updater) => {
           setProfileState(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            syncToServer({ profile: next });
+            triggerSync();
             return next;
           });
         };
