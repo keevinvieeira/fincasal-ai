@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node server.cjs",
-    "build": "node -e \"const fs=require('fs'); fs.mkdirSync('dist', {recursive: true}); fs.copyFileSync('index.html', 'dist/index.html'); fs.copyFileSync('manifest.json', 'dist/manifest.json'); if (fs.existsSync('_worker.js')) fs.copyFileSync('_worker.js', 'dist/_worker.js'); console.log('Dist created with _worker.js successfully!');\"",
+    "build": "node build.js",
     "start": "node server.cjs"
   },
   "dependencies": {
