@@ -314,10 +314,29 @@
         const [gamification, setGamificationState] = useState({ level: 3, levelTitle: 'Mestres do Planejamento 🏆', xp: 420, xpNextLevel: 500, streakDays: 5, quests: [], badges: [] });
         const [wishlist, setWishlistState] = useState([]);
 
+        const [coupleCode, setCoupleCodeState] = useState(() => {
+          try {
+            return localStorage.getItem('fincasal_couple_code') || 'KEVIN-MILENA';
+          } catch (e) {
+            return 'KEVIN-MILENA';
+          }
+        });
+
+        const setCoupleCode = (code) => {
+          const clean = (code || 'KEVIN-MILENA').toUpperCase().trim();
+          try {
+            localStorage.setItem('fincasal_couple_code', clean);
+          } catch (e) {}
+          setCoupleCodeState(clean);
+        };
+
         const isLocalChange = useRef(false);
         const lastUpdatedAt = useRef(Date.now());
 
-        const NTFY_TOPIC = 'fincasal_ai_v2_kevin_milena';
+        const stateRef = useRef({});
+        stateRef.current = { profile, config, transactions, chatMessages, gamification, wishlist };
+
+        const NTFY_TOPIC = 'fincasal_room_' + coupleCode.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
         const mergeItems = (prev = [], next = []) => {
           if (!Array.isArray(next)) return prev;
@@ -333,25 +352,27 @@
           const now = Date.now();
           lastUpdatedAt.current = now;
 
-          const payload = { ...partialState, updatedAt: now };
+          const fullSnapshot = {
+            ...stateRef.current,
+            ...partialState,
+            updatedAt: now
+          };
 
           try {
-            const currentLocal = JSON.parse(localStorage.getItem('fincasal_local_db') || '{}');
-            const updatedLocal = { ...currentLocal, ...payload };
-            localStorage.setItem('fincasal_local_db', JSON.stringify(updatedLocal));
+            localStorage.setItem('fincasal_local_db', JSON.stringify(fullSnapshot));
           } catch (e) {}
 
-          // 1. Envio em tempo real instantâneo (< 100ms) via canal de transmissão seguro
+          // 1. Transmissão do Estado Completo em tempo real instantâneo (< 100ms) para o celular/PC do casal
           fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
             method: 'POST',
-            body: JSON.stringify(payload)
+            body: JSON.stringify(fullSnapshot)
           }).catch(err => console.warn('Realtime push offline'));
 
           // 2. Envio para API Cloudflare KV para persistência permanente
           fetch('/api/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(fullSnapshot)
           }).catch(err => console.warn('Sync offline'));
         };
 
@@ -407,7 +428,7 @@
           const applyStateData = (data) => {
             if (!data) return;
             if (data.updatedAt && data.updatedAt < lastUpdatedAt.current) {
-              return; // Ignora dados antigos que poderiam sobrescrever o estado atual do usuário
+              return;
             }
             if (data.updatedAt) {
               lastUpdatedAt.current = data.updatedAt;
@@ -478,7 +499,7 @@
           // Conexão por eventos Server-Sent Events (SSE) em tempo real instantâneo (<100ms) entre dispositivos
           let ntfyEvtSource;
           try {
-            ntfyEvtSource = new EventSource(`https://ntfy.sh/${NTFY_TOPIC}/sse?since=now`);
+            ntfyEvtSource = new EventSource(`https://ntfy.sh/${NTFY_TOPIC}/sse`);
             ntfyEvtSource.onmessage = (event) => {
               try {
                 const payload = JSON.parse(event.data);
@@ -496,7 +517,7 @@
             clearInterval(pollTimer);
             if (ntfyEvtSource) ntfyEvtSource.close();
           };
-        }, []);
+        }, [NTFY_TOPIC]);
 
         const [editingTx, setEditingTx] = useState(null);
         const [editingWishItem, setEditingWishItem] = useState(null);
