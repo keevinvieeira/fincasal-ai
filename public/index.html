@@ -317,7 +317,7 @@
         const isLocalChange = useRef(false);
         const lastUpdatedAt = useRef(Date.now());
 
-        const NTFY_TOPIC = 'fincasal_ai_kevin_milena_7795dc7d';
+        const NTFY_TOPIC = 'fincasal_ai_v2_kevin_milena';
 
         const mergeItems = (prev = [], next = []) => {
           if (!Array.isArray(next)) return prev;
@@ -478,7 +478,7 @@
           // Conexão por eventos Server-Sent Events (SSE) em tempo real instantâneo (<100ms) entre dispositivos
           let ntfyEvtSource;
           try {
-            ntfyEvtSource = new EventSource(`https://ntfy.sh/${NTFY_TOPIC}/sse`);
+            ntfyEvtSource = new EventSource(`https://ntfy.sh/${NTFY_TOPIC}/sse?since=now`);
             ntfyEvtSource.onmessage = (event) => {
               try {
                 const payload = JSON.parse(event.data);
