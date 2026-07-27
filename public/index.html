@@ -381,7 +381,7 @@
 
         useEffect(() => {
           const fetchSync = () => {
-            fetch('/api/sync')
+            fetch('/api/sync?_t=' + Date.now(), { cache: 'no-store' })
               .then(res => {
                 if (!res.ok) throw new Error('Servidor backend não encontrado neste domínio');
                 return res.json();
@@ -413,7 +413,7 @@
           };
 
           fetchSync();
-          const pollTimer = setInterval(fetchSync, 2500);
+          const pollTimer = setInterval(fetchSync, 1500);
 
           let evtSource;
           try {
