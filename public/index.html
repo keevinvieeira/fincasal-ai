@@ -307,11 +307,122 @@
         const [isSynced, setIsSynced] = useState(false);
 
         const [profile, setProfileState] = useState({ partner1: 'Kevin', partner2: 'Milena', incomePartner1: 5000, incomePartner2: 4500, avatar1: '💙', avatar2: '💜' });
+        const GAMIFICATION_LEVELS = [
+          { level: 1, minXP: 0, title: 'Iniciantes das Finanças 🌱', nextXP: 100 },
+          { level: 2, minXP: 100, title: 'Casal Organizado 📊', nextXP: 300 },
+          { level: 3, minXP: 300, title: 'Guardiões da Economia 🛡️', nextXP: 600 },
+          { level: 4, minXP: 600, title: 'Mestres do Planejamento 🏆', nextXP: 1000 },
+          { level: 5, minXP: 1000, title: 'Lendas da Prosperidade 👑', nextXP: 2000 },
+          { level: 6, minXP: 2000, title: 'Império Financeiro 💎', nextXP: 5000 }
+        ];
+
+        function calculateLevelFromXP(xp) {
+          const safeXP = Math.max(0, xp || 0);
+          for (let i = GAMIFICATION_LEVELS.length - 1; i >= 0; i--) {
+            if (safeXP >= GAMIFICATION_LEVELS[i].minXP) {
+              return {
+                level: GAMIFICATION_LEVELS[i].level,
+                levelTitle: GAMIFICATION_LEVELS[i].title,
+                xpNextLevel: GAMIFICATION_LEVELS[i].nextXP
+              };
+            }
+          }
+          return { level: 1, levelTitle: 'Iniciantes das Finanças 🌱', xpNextLevel: 100 };
+        }
+
+        function computeXPState(currentTx = [], currentQuests = [], currentWish = [], currentGam = {}) {
+          const txXP = (currentTx || []).reduce((acc, t) => {
+            return acc + (t.xpEarned || (t.type === 'income' ? 30 : t.pillar === 'future' ? 25 : 15));
+          }, 0);
+
+          const questXP = (currentQuests || []).filter(q => q.completed).reduce((acc, q) => acc + (q.rewardXP || 0), 0);
+          const spentXP = (currentWish || []).filter(w => w.purchased).reduce((acc, w) => acc + (w.xpRequired || 0), 0);
+
+          const totalXP = Math.max(0, txXP + questXP - spentXP);
+          const lvlInfo = calculateLevelFromXP(totalXP);
+
+          return {
+            ...currentGam,
+            xp: totalXP,
+            level: lvlInfo.level,
+            levelTitle: lvlInfo.levelTitle,
+            xpNextLevel: lvlInfo.xpNextLevel,
+            badges: (currentGam.badges || []).map(b => {
+              if (b.id === 'b1' && (currentTx || []).length > 0) return { ...b, unlocked: true };
+              if (b.id === 'b3' && (currentWish || []).some(w => w.purchased)) return { ...b, unlocked: true };
+              return b;
+            })
+          };
+        }
+
+        const [wishlistCategories, setWishlistCategoriesState] = useState(() => {
+          try {
+            const saved = localStorage.getItem('fincasal_wish_categories');
+            return saved ? JSON.parse(saved) : ['Compras Pessoais', 'Lazer & Passeios', 'Assinaturas & Tech', 'Restaurante', 'Viagens', 'Casa & Eletro'];
+          } catch (e) {
+            return ['Compras Pessoais', 'Lazer & Passeios', 'Assinaturas & Tech', 'Restaurante', 'Viagens', 'Casa & Eletro'];
+          }
+        });
+
+        const setWishlistCategories = (updater) => {
+          setWishlistCategoriesState(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            try {
+              localStorage.setItem('fincasal_wish_categories', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+          });
+        };
+
+        const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
+        const [newCatInput, setNewCatInput] = useState('');
+
+        const handleAddCategory = (e) => {
+          if (e) e.preventDefault();
+          const clean = newCatInput.trim();
+          if (!clean) return;
+          if (wishlistCategories.some(c => c.toLowerCase() === clean.toLowerCase())) {
+            alert('⚠️ Esta categoria já existe!');
+            return;
+          }
+          setWishlistCategories(prev => [...prev, clean]);
+          setNewCatInput('');
+        };
+
+        const handleDeleteCategory = (catToDelete) => {
+          if (wishlistCategories.length <= 1) {
+            alert('⚠️ Você deve manter pelo menos 1 categoria na lista!');
+            return;
+          }
+          if (confirm(`🗑️ Deseja excluir a categoria "${catToDelete}"?`)) {
+            setWishlistCategories(prev => {
+              const next = prev.filter(c => c !== catToDelete);
+              setWishlist(wPrev => wPrev.map(w => w.category === catToDelete ? { ...w, category: next[0] || 'Compras Pessoais' } : w));
+              return next;
+            });
+          }
+        };
+
         const [activeUser, setActiveUser] = useState('Kevin');
         const [config, setConfigState] = useState({ targetNeeds: 60, targetWants: 25, targetFuture: 15 });
         const [transactions, setTransactionsState] = useState([]);
         const [chatMessages, setChatMessagesState] = useState([]);
-        const [gamification, setGamificationState] = useState({ level: 3, levelTitle: 'Mestres do Planejamento 🏆', xp: 420, xpNextLevel: 500, streakDays: 5, quests: [], badges: [] });
+        const [gamification, setGamificationState] = useState({
+          level: 1,
+          levelTitle: 'Iniciantes das Finanças 🌱',
+          xp: 0,
+          xpNextLevel: 100,
+          streakDays: 1,
+          quests: [
+            { id: 'q1', title: 'Primeiro Registro do Casal', description: 'Cadastrar a primeira conta ou salário no Chat', rewardXP: 50, completed: false },
+            { id: 'q2', title: 'Meta de Lazer sob Controle', description: 'Manter os gastos de lazer dentro da meta mensal', rewardXP: 100, completed: false }
+          ],
+          badges: [
+            { id: 'b1', icon: '🔥', title: 'Fogo nos Registros', description: 'Primeiro registro realizado', unlocked: false },
+            { id: 'b2', icon: '🛡️', title: 'Reserva Protegida', description: 'Meta de reserva iniciada', unlocked: false },
+            { id: 'b3', icon: '🛍️', title: 'Primeiro Desejo Realizado', description: 'Comprou um item da Wishlist com XP', unlocked: false }
+          ]
+        });
         const [wishlist, setWishlistState] = useState([]);
 
         const [coupleCode, setCoupleCodeState] = useState(() => {
@@ -535,6 +646,84 @@
         const [newWishPrice, setNewWishPrice] = useState('');
         const [newWishCategory, setNewWishCategory] = useState('Compras Pessoais');
 
+        const [isAddQuestModalOpen, setIsAddQuestModalOpen] = useState(false);
+        const [editingQuest, setEditingQuest] = useState(null);
+
+        const [newQuestTitle, setNewQuestTitle] = useState('');
+        const [newQuestDesc, setNewQuestDesc] = useState('');
+        const [newQuestRewardXP, setNewQuestRewardXP] = useState('100');
+
+        const handleClearChat = () => {
+          if (confirm('🧹 Deseja zerar/limpar todo o histórico de conversas do Chat para ambos os dispositivos?')) {
+            setChatMessages([]);
+          }
+        };
+
+        const handleAddQuest = (e) => {
+          if (e) e.preventDefault();
+          if (!newQuestTitle.trim()) return;
+          const reward = parseInt(newQuestRewardXP) || 100;
+          const newQ = {
+            id: 'q-' + Date.now().toString(),
+            title: newQuestTitle.trim(),
+            description: newQuestDesc.trim() || 'Missão personalizada do casal',
+            rewardXP: reward,
+            completed: false
+          };
+
+          setGamification(g => ({
+            ...g,
+            quests: [...(g.quests || []), newQ]
+          }));
+
+          setNewQuestTitle('');
+          setNewQuestDesc('');
+          setNewQuestRewardXP('100');
+          setIsAddQuestModalOpen(false);
+        };
+
+        const handleSaveEditQuest = (e) => {
+          if (e) e.preventDefault();
+          if (!editingQuest || !editingQuest.title.trim()) return;
+          setGamification(g => ({
+            ...g,
+            quests: (g.quests || []).map(q => q.id === editingQuest.id ? editingQuest : q)
+          }));
+          setEditingQuest(null);
+        };
+
+        const handleDeleteQuest = (id) => {
+          if (confirm('🗑️ Deseja excluir esta missão?')) {
+            setGamification(g => ({
+              ...g,
+              quests: (g.quests || []).filter(q => q.id !== id)
+            }));
+          }
+        };
+
+        const handleToggleQuestComplete = (quest) => {
+          const isCompleting = !quest.completed;
+          setGamification(g => {
+            const updatedQuests = (g.quests || []).map(q => q.id === quest.id ? { ...q, completed: isCompleting } : q);
+            const addedXP = isCompleting ? quest.rewardXP : -quest.rewardXP;
+            const newXP = Math.max(0, (g.xp || 0) + addedXP);
+            const lvlInfo = calculateLevelFromXP(newXP);
+
+            if (isCompleting) {
+              triggerCelebration('income');
+            }
+
+            return {
+              ...g,
+              quests: updatedQuests,
+              xp: newXP,
+              level: lvlInfo.level,
+              levelTitle: lvlInfo.levelTitle,
+              xpNextLevel: lvlInfo.xpNextLevel
+            };
+          });
+        };
+
         const messagesEndRef = useRef(null);
         const [inputText, setInputText] = useState('');
         const [isRecording, setIsRecording] = useState(false);
@@ -553,14 +742,22 @@
         // Ações do Extrato
         const handleDeleteTx = (id) => {
           if (confirm('Deseja realmente apagar este lançamento do extrato?')) {
-            setTransactions(prev => prev.filter(t => t.id !== id));
+            setTransactions(prev => {
+              const nextTx = prev.filter(t => t.id !== id);
+              setGamification(prevG => computeXPState(nextTx, gamification.quests, wishlist, prevG));
+              return nextTx;
+            });
           }
         };
 
         const handleSaveEditTx = (e) => {
           e.preventDefault();
           if (!editingTx) return;
-          setTransactions(prev => prev.map(t => t.id === editingTx.id ? editingTx : t));
+          setTransactions(prev => {
+            const nextTx = prev.map(t => t.id === editingTx.id ? editingTx : t);
+            setGamification(prevG => computeXPState(nextTx, gamification.quests, wishlist, prevG));
+            return nextTx;
+          });
           setEditingTx(null);
         };
 
@@ -590,7 +787,11 @@
 
         const handleDeleteWishItem = (id) => {
           if (confirm('Deseja remover este item da lista de desejos?')) {
-            setWishlist(prev => prev.filter(w => w.id !== id));
+            setWishlist(prev => {
+              const nextW = prev.filter(w => w.id !== id);
+              setGamification(prevG => computeXPState(transactions, gamification.quests, nextW, prevG));
+              return nextW;
+            });
           }
         };
 
@@ -611,8 +812,6 @@
           if (confirm(`🎉 Parabéns! Vocês possuem XP suficiente (${gamification.xp} XP >= ${item.xpRequired} XP).\n\nDeseja marcar "${item.name}" (R$ ${item.price.toFixed(2)}) como COMPRADO e lançar no extrato deste mês?`)) {
             triggerCelebration('wishlist');
 
-            setWishlist(prev => prev.map(w => w.id === item.id ? { ...w, purchased: true } : w));
-
             const [year, month] = selectedMonth.split('-');
             const createdDate = new Date(parseInt(year), parseInt(month) - 1, 15, 12, 0).toISOString();
 
@@ -628,12 +827,15 @@
               monthKey: selectedMonth
             };
 
-            setTransactions(prev => [buyTx, ...prev]);
-
-            setGamification(g => ({
-              ...g,
-              badges: g.badges.map(b => b.id === 'b3' ? { ...b, unlocked: true } : b)
-            }));
+            setWishlist(prevW => {
+              const nextW = prevW.map(w => w.id === item.id ? { ...w, purchased: true } : w);
+              setTransactions(prevTx => {
+                const nextTx = [buyTx, ...prevTx];
+                setGamification(prevG => computeXPState(nextTx, gamification.quests, nextW, prevG));
+                return nextTx;
+              });
+              return nextW;
+            });
           }
         };
 
@@ -647,11 +849,10 @@
 
           let botMsg = null;
           if (result.success) {
-            setTransactions(prev => [result.data, ...prev]);
-            setGamification(g => {
-              const newXP = g.xp + result.data.xpEarned;
-              const nextLvl = newXP >= g.xpNextLevel;
-              return { ...g, xp: newXP, level: nextLvl ? g.level + 1 : g.level, xpNextLevel: nextLvl ? g.xpNextLevel + 300 : g.xpNextLevel };
+            setTransactions(prev => {
+              const nextTx = [result.data, ...prev];
+              setGamification(prevG => computeXPState(nextTx, gamification.quests, wishlist, prevG));
+              return nextTx;
             });
 
             // DISPARO DE ANIMAÇÃO E SOM DE ACORDO COM O TIPO DE ENTRADA OU SAÍDA
@@ -805,13 +1006,9 @@
                 </nav>
               </div>
 
-              <div className="pt-4 border-t border-slate-800/80 space-y-2">
-                <div className="bg-slate-900/80 p-3 rounded-2xl border border-slate-800 text-xs">
-                  <div className="flex justify-between text-[11px] text-slate-400 font-bold mb-1">
-                    <span>Nível do Casal</span>
-                    <span className="text-amber-300">⭐ {gamification.xp} XP</span>
-                  </div>
-                  <div className="text-xs font-black text-white">{gamification.levelTitle}</div>
+              <div className="pt-4 border-t border-slate-800/80">
+                <div className="text-[10px] text-center text-slate-500 font-bold">
+                  FinCasal AI • Realtime 24/7
                 </div>
               </div>
             </aside>
@@ -841,6 +1038,12 @@
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {/* XP BADGE NO MENU SUPERIOR */}
+                    <div className="bg-gradient-to-r from-purple-950/80 to-slate-900 border border-amber-500/40 px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-black text-amber-300 shadow shrink-0">
+                      <span>⭐ {gamification.xp} XP</span>
+                      <span className="hidden sm:inline text-[10px] text-purple-300 font-bold">• Nv.{gamification.level}</span>
+                    </div>
+
                     <div className="bg-slate-900 p-1 rounded-xl border border-slate-800 flex gap-0.5 shrink-0">
                       <button
                         onClick={() => setActiveUser(profile.partner1)}
@@ -885,6 +1088,13 @@
                       <div className="flex items-center gap-1.5">
                         <span className="bg-purple-500/20 text-purple-300 text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-full font-bold">⭐ {gamification.xp} XP</span>
                         <span className="bg-amber-500/20 text-amber-300 text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-full font-bold">🔥 {gamification.streakDays}d</span>
+                        <button
+                          onClick={handleClearChat}
+                          title="Zerar e Limpar Conversa do Chat"
+                          className="bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[10px] sm:text-xs px-2.5 py-1 rounded-xl font-extrabold flex items-center gap-1 transition cursor-pointer shrink-0"
+                        >
+                          🗑️ Limpar
+                        </button>
                       </div>
                     </div>
 
@@ -954,9 +1164,14 @@
                             <div className="text-[9px] text-slate-400 uppercase font-bold">XP Atual</div>
                             <div className="text-base sm:text-xl font-black text-amber-300">⭐ {gamification.xp} XP</div>
                           </div>
-                          <button onClick={() => setIsAddWishModalOpen(true)} className="px-3 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-xs font-bold rounded-xl shadow hover:opacity-95 shrink-0">
-                            + Adicionar Item
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => setIsCategoryManagerOpen(true)} className="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 text-xs font-bold rounded-xl shrink-0 cursor-pointer">
+                              ⚙️ Categorias
+                            </button>
+                            <button onClick={() => setIsAddWishModalOpen(true)} className="px-3 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-xs font-bold rounded-xl shadow hover:opacity-95 shrink-0 cursor-pointer">
+                              + Adicionar Item
+                            </button>
+                          </div>
                         </div>
                       </div>
 
@@ -1279,28 +1494,156 @@
                 {/* GAMIFICATION TAB */}
                 {tab === 'gamification' && (
                   <div className="space-y-4 sm:space-y-6">
-                    <div className="glass-panel p-4 sm:p-6 rounded-3xl bg-gradient-to-r from-purple-950/60 to-slate-900 border border-purple-500/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                      <div>
-                        <span className="text-[10px] sm:text-xs uppercase font-extrabold text-purple-400">Nível do Casal ({profile.partner1} & {profile.partner2})</span>
-                        <h2 className="text-lg sm:text-2xl font-black text-white mt-0.5">{gamification.levelTitle} (Nível {gamification.level})</h2>
-                        <p className="text-xs text-slate-300 mt-0.5">Continuem lançando gastos no Chat para ganhar XP!</p>
+                    {/* TOP LEVEL HEADER */}
+                    <div className="glass-panel p-4 sm:p-6 rounded-3xl bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/60 border border-purple-500/30 space-y-4">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div>
+                          <span className="text-[10px] sm:text-xs uppercase font-black tracking-wider text-purple-400">Progresso do Casal ({profile.partner1} & {profile.partner2})</span>
+                          <h2 className="text-lg sm:text-2xl font-black text-white mt-0.5">{gamification.levelTitle} (Nível {gamification.level})</h2>
+                          <p className="text-xs text-slate-300 mt-0.5">Continuem lançando gastos no Chat e cumprindo missões para evoluir de nível!</p>
+                        </div>
+                        <div className="bg-slate-900/90 px-4 py-3 rounded-2xl border border-purple-500/40 text-left sm:text-center w-full sm:w-auto shrink-0 shadow-lg">
+                          <div className="text-[10px] text-slate-400 font-bold uppercase">XP Acumulado</div>
+                          <div className="text-lg sm:text-2xl font-black text-amber-300">⭐ {gamification.xp} <span className="text-xs text-slate-400 font-normal">/ {gamification.xpNextLevel} XP</span></div>
+                        </div>
                       </div>
-                      <div className="bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-800 text-left sm:text-center w-full sm:w-auto shrink-0">
-                        <div className="text-[10px] text-slate-400">Experiência</div>
-                        <div className="text-base sm:text-xl font-black text-amber-300">{gamification.xp} / {gamification.xpNextLevel} XP</div>
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[11px] font-bold text-slate-300">
+                          <span>Progresso para o Próximo Nível</span>
+                          <span className="text-purple-300">{gamification.xp} / {gamification.xpNextLevel} XP</span>
+                        </div>
+                        <div className="w-full bg-slate-900 h-3 rounded-full overflow-hidden border border-slate-800 p-0.5">
+                          <div
+                            className="bg-gradient-to-r from-purple-500 via-pink-500 to-amber-400 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${Math.min(((gamification.xp || 0) / (gamification.xpNextLevel || 100)) * 100, 100)}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    <div className="glass-panel p-4 sm:p-6 rounded-3xl space-y-3 sm:space-y-4">
-                      <h3 className="font-extrabold text-xs sm:text-sm uppercase text-slate-300">🎯 Missões da Semana</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {gamification.quests.map(q => (
-                          <div key={q.id} className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 space-y-1.5">
-                            <div className="flex justify-between font-bold text-xs"><span>{q.title}</span><span className="text-purple-400">+{q.rewardXP} XP</span></div>
-                            <p className="text-[11px] text-slate-400">{q.description}</p>
-                            <div className="text-[10px] text-emerald-400 font-bold">{q.completed ? 'Concluído! ✅' : 'Em progresso 🚀'}</div>
+                    {/* MISSÕES DO CASAL */}
+                    <div className="glass-panel p-4 sm:p-6 rounded-3xl space-y-4 border border-slate-800">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-3">
+                        <div>
+                          <h3 className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
+                            <span>🎯 Missões do Casal</span>
+                            <span className="bg-purple-500/20 text-purple-300 text-[10px] px-2 py-0.5 rounded-md border border-purple-500/30">Editáveis</span>
+                          </h3>
+                          <p className="text-[11px] sm:text-xs text-slate-400">Crie, edite e conclua desafios financeiros personalizados para o casal ganhar XP!</p>
+                        </div>
+                        <button
+                          onClick={() => setIsAddQuestModalOpen(true)}
+                          className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-extrabold text-xs rounded-xl shadow shrink-0 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          ➕ Nova Missão
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                        {(!gamification.quests || gamification.quests.length === 0) ? (
+                          <div className="col-span-full text-center py-6 text-slate-400 text-xs bg-slate-900/50 rounded-2xl border border-dashed border-slate-800">
+                            Nenhuma missão cadastrada ainda. Clique em <strong>"+ Nova Missão"</strong> acima para criar o primeiro desafio! 🚀
                           </div>
-                        ))}
+                        ) : (
+                          gamification.quests.map(q => (
+                            <div
+                              key={q.id}
+                              className={`p-4 rounded-2xl border transition-all space-y-2.5 ${
+                                q.completed
+                                  ? 'bg-slate-900/80 border-emerald-500/40 opacity-90'
+                                  : 'bg-slate-900/90 border-slate-800 hover:border-purple-500/30'
+                              }`}
+                            >
+                              <div className="flex justify-between items-start gap-2">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm">{q.completed ? '✅' : '🚀'}</span>
+                                    <h4 className="font-extrabold text-xs sm:text-sm text-white">{q.title}</h4>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 mt-1">{q.description}</p>
+                                </div>
+                                <span className="bg-purple-500/20 text-purple-300 font-extrabold text-xs px-2.5 py-1 rounded-xl border border-purple-500/30 shrink-0">
+                                  +{q.rewardXP} XP
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
+                                <div className="flex items-center gap-1.5">
+                                  <button onClick={() => setEditingQuest(q)} className="p-1.5 bg-slate-800 text-blue-400 rounded-lg hover:bg-slate-700 text-xs" title="Editar Missão">✏️</button>
+                                  <button onClick={() => handleDeleteQuest(q.id)} className="p-1.5 bg-slate-800 text-rose-400 rounded-lg hover:bg-slate-700 text-xs" title="Excluir Missão">🗑️</button>
+                                </div>
+
+                                <button
+                                  onClick={() => handleToggleQuestComplete(q)}
+                                  className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition shrink-0 ${
+                                    q.completed
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30'
+                                      : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow hover:opacity-90'
+                                  }`}
+                                >
+                                  {q.completed ? 'Concluída! (Desmarcar)' : '🚀 Concluir Missão'}
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* LEGENDA DE NÍVEIS E XP (SOLICITADO PELO USUÁRIO) */}
+                    <div className="glass-panel p-4 sm:p-6 rounded-3xl space-y-4 border border-slate-800">
+                      <div>
+                        <h3 className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
+                          <span>📜 Legenda de Níveis & XP Exigido</span>
+                        </h3>
+                        <p className="text-[11px] sm:text-xs text-slate-400">Veja exatamente a quantidade de XP necessária para alcançar o título de <strong>Mestres do Planejamento 🏆</strong> e outros níveis!</p>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                          <thead className="bg-slate-900 uppercase text-[10px] font-bold text-slate-400 border-b border-slate-800">
+                            <tr>
+                              <th className="p-3">Nível</th>
+                              <th className="p-3">Título do Casal</th>
+                              <th className="p-3">XP Necessário</th>
+                              <th className="p-3 text-right">Status Atual</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60">
+                            {GAMIFICATION_LEVELS.map(lvl => {
+                              const isCurrent = gamification.level === lvl.level;
+                              const isMestre = lvl.level === 4;
+
+                              return (
+                                <tr key={lvl.level} className={`transition ${isCurrent ? 'bg-purple-950/40 font-bold' : 'hover:bg-slate-800/30'}`}>
+                                  <td className="p-3">
+                                    <span className={`px-2 py-0.5 rounded font-black text-[10px] ${isCurrent ? 'bg-purple-500 text-white' : 'bg-slate-800 text-slate-300'}`}>
+                                      Nível {lvl.level}
+                                    </span>
+                                  </td>
+                                  <td className={`p-3 font-extrabold text-sm ${isMestre ? 'text-amber-300' : isCurrent ? 'text-purple-300' : 'text-white'}`}>
+                                    {lvl.title} {isMestre && <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded ml-1 font-bold">Meta Principal!</span>}
+                                  </td>
+                                  <td className="p-3 text-slate-300 font-bold">
+                                    {lvl.minXP} XP <span className="text-slate-500 font-normal">até {lvl.nextXP - 1} XP</span>
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    {isCurrent ? (
+                                      <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-xl text-[10px] font-black">
+                                        Nível Atual ✅
+                                      </span>
+                                    ) : gamification.xp >= lvl.nextXP ? (
+                                      <span className="text-slate-500 text-[11px]">Conquistado</span>
+                                    ) : (
+                                      <span className="text-amber-400 text-[11px] font-bold">Faltam {lvl.minXP - gamification.xp} XP</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   </div>
@@ -1416,10 +1759,9 @@
                         <div>
                           <label className="text-slate-400 font-bold block mb-1">Categoria</label>
                           <select value={newWishCategory} onChange={e => setNewWishCategory(e.target.value)} className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700">
-                            <option value="Compras Pessoais">Compras Pessoais</option>
-                            <option value="Lazer & Passeios">Lazer & Passeios</option>
-                            <option value="Assinaturas & Tech">Assinaturas & Tech</option>
-                            <option value="Restaurante">Restaurante</option>
+                            {wishlistCategories.map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
                           </select>
                         </div>
                         <div className="flex justify-end gap-2 pt-2">
@@ -1450,10 +1792,9 @@
                         <div>
                           <label className="text-slate-400 font-bold block mb-1">Categoria</label>
                           <select value={editingWishItem.category} onChange={e => setEditingWishItem({ ...editingWishItem, category: e.target.value })} className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700">
-                            <option value="Compras Pessoais">Compras Pessoais</option>
-                            <option value="Lazer & Passeios">Lazer & Passeios</option>
-                            <option value="Assinaturas & Tech">Assinaturas & Tech</option>
-                            <option value="Restaurante">Restaurante</option>
+                            {wishlistCategories.map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
                           </select>
                         </div>
                         <div className="flex justify-end gap-2 pt-2">
@@ -1461,6 +1802,53 @@
                           <button type="submit" className="px-4 py-2 bg-pink-600 text-white font-bold rounded-xl">Salvar Alterações</button>
                         </div>
                       </form>
+                    </div>
+                  </div>
+                )}
+
+                {isCategoryManagerOpen && (
+                  <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+                    <div className="glass-panel p-5 sm:p-6 rounded-3xl max-w-md w-full border border-slate-700 space-y-4">
+                      <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                        <h3 className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
+                          <span>⚙️ Categorias da Wishlist</span>
+                        </h3>
+                        <button onClick={() => setIsCategoryManagerOpen(false)} className="text-slate-400 hover:text-white font-bold text-sm">✕</button>
+                      </div>
+
+                      <form onSubmit={handleAddCategory} className="flex gap-2 text-xs">
+                        <input
+                          type="text"
+                          placeholder="Nova categoria (ex: Viagens)"
+                          value={newCatInput}
+                          onChange={e => setNewCatInput(e.target.value)}
+                          className="flex-1 bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700 focus:border-purple-500"
+                        />
+                        <button type="submit" className="px-3.5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl shadow shrink-0">
+                          + Criar
+                        </button>
+                      </form>
+
+                      <div className="space-y-1.5 max-h-56 overflow-y-auto pt-1">
+                        <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Categorias Existentes:</div>
+                        {wishlistCategories.map(cat => (
+                          <div key={cat} className="flex items-center justify-between bg-slate-900/90 px-3 py-2 rounded-xl border border-slate-800 text-xs text-white">
+                            <span className="font-bold">{cat}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCategory(cat)}
+                              className="text-rose-400 hover:text-rose-300 p-1 text-xs"
+                              title="Excluir Categoria"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex justify-end pt-2 border-t border-slate-800">
+                        <button type="button" onClick={() => setIsCategoryManagerOpen(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl">Concluir</button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1494,6 +1882,100 @@
                         <div className="flex justify-end gap-2 pt-2">
                           <button type="button" onClick={() => setEditingTx(null)} className="px-3 py-2 text-slate-400 hover:text-white font-bold">Cancelar</button>
                           <button type="submit" className="px-4 py-2 bg-emerald-500 text-white font-bold rounded-xl">Salvar Alterações</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+                {isAddQuestModalOpen && (
+                  <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+                    <div className="glass-panel p-5 sm:p-6 rounded-3xl max-w-md w-full border border-slate-700 space-y-4">
+                      <h3 className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
+                        <span>🎯 Criar Nova Missão do Casal</span>
+                      </h3>
+                      <form onSubmit={handleAddQuest} className="space-y-3 text-xs">
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Título da Missão</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="ex: Economizar R$ 200 no Mercado"
+                            value={newQuestTitle}
+                            onChange={e => setNewQuestTitle(e.target.value)}
+                            className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700 focus:border-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Descrição</label>
+                          <input
+                            type="text"
+                            placeholder="ex: Comprar apenas itens essenciais sem supérfluos"
+                            value={newQuestDesc}
+                            onChange={e => setNewQuestDesc(e.target.value)}
+                            className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700 focus:border-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Recompensa em XP</label>
+                          <select
+                            value={newQuestRewardXP}
+                            onChange={e => setNewQuestRewardXP(e.target.value)}
+                            className="w-full bg-slate-900 text-amber-300 font-bold p-2.5 rounded-xl border border-slate-700 focus:border-purple-500"
+                          >
+                            <option value="50">+50 XP (Fácil)</option>
+                            <option value="100">+100 XP (Médio)</option>
+                            <option value="150">+150 XP (Desafio)</option>
+                            <option value="250">+250 XP (Épico)</option>
+                          </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2">
+                          <button type="button" onClick={() => setIsAddQuestModalOpen(false)} className="px-3 py-2 text-slate-400 hover:text-white font-bold">Cancelar</button>
+                          <button type="submit" className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-xl shadow">Criar Missão</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+                {editingQuest && (
+                  <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+                    <div className="glass-panel p-5 sm:p-6 rounded-3xl max-w-md w-full border border-slate-700 space-y-4">
+                      <h3 className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
+                        <span>✏️ Editar Missão do Casal</span>
+                      </h3>
+                      <form onSubmit={handleSaveEditQuest} className="space-y-3 text-xs">
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Título da Missão</label>
+                          <input
+                            type="text"
+                            required
+                            value={editingQuest.title}
+                            onChange={e => setEditingQuest({ ...editingQuest, title: e.target.value })}
+                            className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Descrição</label>
+                          <input
+                            type="text"
+                            value={editingQuest.description}
+                            onChange={e => setEditingQuest({ ...editingQuest, description: e.target.value })}
+                            className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Recompensa em XP</label>
+                          <input
+                            type="number"
+                            value={editingQuest.rewardXP}
+                            onChange={e => setEditingQuest({ ...editingQuest, rewardXP: parseInt(e.target.value) || 50 })}
+                            className="w-full bg-slate-900 text-amber-300 font-bold p-2.5 rounded-xl border border-slate-700"
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2">
+                          <button type="button" onClick={() => setEditingQuest(null)} className="px-3 py-2 text-slate-400 hover:text-white font-bold">Cancelar</button>
+                          <button type="submit" className="px-4 py-2 bg-purple-600 text-white font-bold rounded-xl shadow">Salvar Alterações</button>
                         </div>
                       </form>
                     </div>

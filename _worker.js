@@ -32,18 +32,18 @@ const DEFAULT_STATE = {
     { id: 'w4', name: 'TV 55" 4K para a Sala', price: 2500, category: 'Compras Pessoais', purchased: false, xpRequired: 500, addedBy: 'Kevin' }
   ],
   gamification: {
-    level: 3,
-    levelTitle: 'Mestres do Planejamento 🏆',
-    xp: 420,
-    xpNextLevel: 500,
-    streakDays: 5,
+    level: 1,
+    levelTitle: 'Iniciantes das Finanças 🌱',
+    xp: 0,
+    xpNextLevel: 100,
+    streakDays: 1,
     quests: [
-      { id: 'q1', title: 'Registro de Julho 2026', description: 'Cadastrar contas fixas do mês de Julho', progress: 7, total: 7, completed: true, rewardXP: 150 },
-      { id: 'q2', title: 'Escudo do Futuro', description: 'Garantir no mínimo 15% em Reserva e Investimentos', progress: 500, total: 1000, completed: false, rewardXP: 150 }
+      { id: 'q1', title: 'Primeiro Registro do Casal', description: 'Cadastrar a primeira conta ou salário no Chat', rewardXP: 50, completed: false },
+      { id: 'q2', title: 'Meta de Lazer sob Controle', description: 'Manter os gastos de lazer dentro da meta mensal', rewardXP: 100, completed: false }
     ],
     badges: [
-      { id: 'b1', icon: '🔥', title: 'Fogo nos Registros', description: 'Todas as contas fixas cadastradas', unlocked: true },
-      { id: 'b2', icon: '🛡️', title: 'Reserva Protegida', description: 'Meta de reserva iniciada', unlocked: true },
+      { id: 'b1', icon: '🔥', title: 'Fogo nos Registros', description: 'Primeiro registro realizado', unlocked: false },
+      { id: 'b2', icon: '🛡️', title: 'Reserva Protegida', description: 'Meta de reserva iniciada', unlocked: false },
       { id: 'b3', icon: '🛍️', title: 'Primeiro Desejo Realizado', description: 'Comprou um item da Wishlist com XP', unlocked: false }
     ]
   },
