@@ -1,0 +1,1401 @@
+<!doctype html>
+<html lang="pt-BR" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0b0f19" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="FinCasal AI" />
+    <meta name="description" content="App de Gestão Financeira para Casais com assistente de Chat estilo WhatsApp e regra 50/30/20 rebalanceável." />
+    
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2310b981'/><text y='70' x='15' font-size='65'>❤️</text></svg>" />
+    
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;" />
+    
+    <title>FinCasal AI — Reconhecimento Inteligente de Receita & Entradas</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              whatsapp: {
+                green: '#25d366',
+                dark: '#0b141a',
+                bubbleOut: '#005c4b',
+                bubbleIn: '#202c33'
+              }
+            }
+          }
+        }
+      }
+    </script>
+    
+    <!-- React, ReactDOM & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.4/dist/confetti.browser.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+      body {
+        background-color: #0b0f19;
+        color: #f3f4f6;
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+      .glass-panel {
+        background: rgba(22, 31, 48, 0.85);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      }
+      .glass-card {
+        background: rgba(30, 41, 59, 0.65);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        transition: all 0.25s ease-in-out;
+      }
+      .whatsapp-chat-bg {
+        background-color: #0b141a;
+        background-image: radial-gradient(rgba(37, 211, 102, 0.04) 1px, transparent 0);
+        background-size: 24px 24px;
+      }
+      @keyframes pulse-record {
+        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+        70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+      }
+      .recording-active {
+        animation: pulse-record 1.2s infinite;
+      }
+      input, select, textarea {
+        font-size: 16px !important;
+      }
+      @media (min-width: 640px) {
+        input, select, textarea {
+          font-size: 0.75rem !important;
+        }
+      }
+    </style>
+  </head>
+  <body class="bg-[#0b0f19] text-slate-100 antialiased selection:bg-emerald-500 selection:text-slate-950">
+    <div id="root"></div>
+
+    <!-- Script da Aplicação FinCasal AI -->
+    <script type="text/babel">
+      const { useState, useEffect, useRef } = React;
+
+      const MONTHS_LIST = [
+        { key: '2026-07', label: 'Julho 2026' },
+        { key: '2026-08', label: 'Agosto 2026' },
+        { key: '2026-09', label: 'Setembro 2026' },
+        { key: '2026-10', label: 'Outubro 2026' },
+        { key: '2026-11', label: 'Novembro 2026' },
+        { key: '2026-12', label: 'Dezembro 2026' }
+      ];
+
+      const CATEGORIES_CONFIG = {
+        'Alimentação': { pillar: 'needs', icon: '🛒', color: '#10b981', keywords: ['mercado', 'supermercado', 'feira', 'padaria', 'sacolão', 'açougue', 'compras'] },
+        'Moradia': { pillar: 'needs', icon: '🏠', color: '#3b82f6', keywords: ['aluguel', 'apartamento', 'parcela apartamento', 'condomínio', 'condominio', 'iptu', 'reforma'] },
+        'Contas Essenciais': { pillar: 'needs', icon: '💡', color: '#06b6d4', keywords: ['luz', 'energia', 'gás', 'gas', 'água', 'saneamento', 'internet', 'wifi', 'celular'] },
+        'Saúde': { pillar: 'needs', icon: '💊', color: '#ec4899', keywords: ['farmácia', 'remédio', 'médico', 'consulta', 'exame', 'dentista'] },
+        'Transporte': { pillar: 'needs', icon: '🚗', color: '#6366f1', keywords: ['parcela carro', 'carro', 'combustível', 'gasolina', 'etanol', 'uber', '99', 'estacionamento'] },
+        'Lazer & Passeios': { pillar: 'wants', icon: '🍿', color: '#f59e0b', keywords: ['cinema', 'filme', 'passeio', 'show', 'teatro', 'viagem', 'praia'] },
+        'Restaurante': { pillar: 'wants', icon: '🍽️', color: '#f97316', keywords: ['restaurante', 'almoço', 'jantar', 'ifood', 'delivery', 'pizza', 'hambúrguer', 'bar', 'cerveja'] },
+        'Assinaturas & Tech': { pillar: 'wants', icon: '📺', color: '#8b5cf6', keywords: ['netflix', 'spotify', 'prime', 'disney', 'youtube', 'game', 'psn', 'chatgpt'] },
+        'Compras Pessoais': { pillar: 'wants', icon: '🛍️', color: '#d946ef', keywords: ['roupa', 'sapato', 'tênis', 'cosmético', 'presente', 'salão', 'barbeiro'] },
+        'Reserva de Emergência': { pillar: 'future', icon: '🛡️', color: '#10b981', keywords: ['reserva', 'emergência', 'emergencia', 'guardar', 'guardei', 'poupança', 'poupanca', 'economia', 'economizei'] },
+        'Investimentos': { pillar: 'future', icon: '📈', color: '#059669', keywords: ['investimento', 'investi', 'ações', 'fii', 'tesouro', 'cdb', 'cripto', 'aporte'] },
+        'Salário & Rendimentos': { pillar: 'income', icon: '💰', color: '#22c55e', keywords: ['salário', 'salario', 'pagamento', 'freelance', 'pix', 'rendimento', 'bônus', 'bonus', 'receita', 'recebi', 'ganhei', 'ganho', 'faturei', 'faturamento', 'depósito', 'deposito', 'entrada', 'prolabore', 'comissão', 'comissao', 'venda', 'reembolso', 'cashback'] }
+      };
+
+      // MOTOR SINTETIZADOR DE EFEITOS SONOROS E ANIMAÇÕES
+      function playAudioFx(type) {
+        try {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return;
+          const ctx = new AudioCtx();
+          const now = ctx.currentTime;
+
+          if (type === 'expense') {
+            // EFEITO: Caixa Registradora Abrindo (Cha-Ching!)
+            const noise = ctx.createBufferSource();
+            const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.04, ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < buffer.length; i++) data[i] = Math.random() * 2 - 1;
+            noise.buffer = buffer;
+            const noiseGain = ctx.createGain();
+            noiseGain.gain.setValueAtTime(0.3, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.04);
+            noise.connect(noiseGain);
+            noiseGain.connect(ctx.destination);
+            noise.start(now);
+
+            // Chime de Metal (B5 + E6)
+            const osc1 = ctx.createOscillator();
+            const osc2 = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc1.type = 'sine'; osc1.frequency.setValueAtTime(987.77, now + 0.03); // B5
+            osc2.type = 'sine'; osc2.frequency.setValueAtTime(1318.51, now + 0.08); // E6
+            gain.gain.setValueAtTime(0.25, now + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            osc1.connect(gain); osc2.connect(gain);
+            gain.connect(ctx.destination);
+            osc1.start(now + 0.03); osc1.stop(now + 0.35);
+            osc2.start(now + 0.08); osc2.stop(now + 0.4);
+          } else if (type === 'income') {
+            // EFEITO: Aplausos / Melodia de Sucesso (C5 -> E5 -> G5 -> C6)
+            const notes = [523.25, 659.25, 783.99, 1046.50];
+            notes.forEach((freq, idx) => {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'triangle';
+              osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+              gain.gain.setValueAtTime(0.25, now + idx * 0.08);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.3);
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+              osc.start(now + idx * 0.08);
+              osc.stop(now + idx * 0.08 + 0.35);
+            });
+          } else if (type === 'wishlist') {
+            // EFEITO: Fanfarra de Conquista 🎉
+            const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+            notes.forEach((freq, idx) => {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+              gain.gain.setValueAtTime(0.3, now + idx * 0.07);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.4);
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+              osc.start(now + idx * 0.07);
+              osc.stop(now + idx * 0.07 + 0.45);
+            });
+          }
+        } catch (e) {
+          console.warn('Audio FX error:', e);
+        }
+      }
+
+      function triggerCelebration(type) {
+        playAudioFx(type);
+        if (!window.confetti) return;
+
+        if (type === 'expense') {
+          // Chuva de Cifrões e Dinheiro 💲 💸 💰
+          if (window.confetti.shapeFromText) {
+            const s1 = window.confetti.shapeFromText({ text: '💲' });
+            const s2 = window.confetti.shapeFromText({ text: '💸' });
+            const s3 = window.confetti.shapeFromText({ text: '💰' });
+            window.confetti({ shapes: [s1, s2, s3], scalar: 2.2, particleCount: 30, spread: 60, origin: { y: 0.6 } });
+          } else {
+            window.confetti({ particleCount: 40, spread: 60, origin: { y: 0.6 } });
+          }
+        } else if (type === 'income') {
+          // Chuva de Moedas de Ouro & Estrelas 💰 🪙 ✨
+          if (window.confetti.shapeFromText) {
+            const s1 = window.confetti.shapeFromText({ text: '💰' });
+            const s2 = window.confetti.shapeFromText({ text: '🪙' });
+            const s3 = window.confetti.shapeFromText({ text: '✨' });
+            window.confetti({ shapes: [s1, s2, s3], scalar: 2.2, particleCount: 45, spread: 70, origin: { y: 0.6 } });
+          } else {
+            window.confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
+          }
+        } else if (type === 'wishlist') {
+          // Animação de Festa com Confete Colorido 🎉
+          window.confetti({ particleCount: 110, spread: 85, origin: { y: 0.6 } });
+        }
+      }
+
+      function calculateRequiredXP(price) {
+        return Math.max(20, Math.ceil((parseFloat(price) || 0) / 5));
+      }
+
+      function parseTransactionMessage(text, currentUserName = 'Kevin', selectedMonthKey = '2026-07') {
+        if (!text) return null;
+        const raw = text.trim();
+        const lower = raw.toLowerCase();
+
+        const amountMatch = lower.match(/(?:r\$\s*)?(\d+(?:[\.,]\d{1,2})?)/i);
+        if (!amountMatch) {
+          return { success: false, error: 'Não consegui identificar o valor. Fale ou escreva por exemplo: "Mercado 150" ou "Receita 500"' };
+        }
+
+        const amount = parseFloat(amountMatch[1].replace(',', '.'));
+        if (isNaN(amount) || amount <= 0) return { success: false, error: 'Valor inválido. Tente um valor maior que zero.' };
+
+        // RECONHECIMENTO DE ENTRADAS / RECEITAS
+        const incomeKeywords = CATEGORIES_CONFIG['Salário & Rendimentos'].keywords;
+        const isIncome = incomeKeywords.some(kw => lower.includes(kw));
+
+        const type = isIncome ? 'income' : 'expense';
+
+        let matchedCategory = isIncome ? 'Salário & Rendimentos' : 'Outros';
+        let matchedPillar = isIncome ? 'income' : 'wants';
+
+        if (!isIncome) {
+          let maxScore = 0;
+          for (const [cat, cfg] of Object.entries(CATEGORIES_CONFIG)) {
+            if (cat === 'Salário & Rendimentos') continue;
+            for (const kw of cfg.keywords) {
+              if (lower.includes(kw) && kw.length > maxScore) {
+                maxScore = kw.length;
+                matchedCategory = cat;
+                matchedPillar = cfg.pillar;
+              }
+            }
+          }
+        }
+
+        let description = raw.replace(/(?:r\$\s*)?\d+(?:[\.,]\d{1,2})?/gi, '').replace(/\b(fixo|fixa|para|de|do|da|com|\+-)\b/gi, '').trim();
+        if (!description) description = matchedCategory;
+
+        const [year, month] = selectedMonthKey.split('-');
+        const createdDate = new Date(parseInt(year), parseInt(month) - 1, 15, 12, 0).toISOString();
+
+        const xpEarned = isIncome ? 30 : (matchedPillar === 'future' ? 25 : 15);
+        
+        let botReply = '';
+        if (isIncome) {
+          botReply = `💰 *ENTRADA/RECEITA REGISTRADA!* R$ ${amount.toFixed(2)} (${description}) adicionados à renda do casal por ${currentUserName}! +${xpEarned} XP! ✨`;
+        } else if (matchedPillar === 'future') {
+          botReply = `🛡️ *RESERVA/ECONOMIA REGISTRADA!* R$ ${amount.toFixed(2)} guardados em ${matchedCategory} por ${currentUserName}! +${xpEarned} XP! 📈`;
+        } else {
+          botReply = `✅ Registrado, ${currentUserName}! R$ ${amount.toFixed(2)} em *${description}* (${matchedCategory}). +${xpEarned} XP gerados! 🚀`;
+        }
+
+        return {
+          success: true,
+          type,
+          data: {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
+            type,
+            amount,
+            description: description.charAt(0).toUpperCase() + description.slice(1),
+            category: matchedCategory,
+            pillar: matchedPillar,
+            user: currentUserName,
+            date: createdDate,
+            monthKey: selectedMonthKey,
+            xpEarned
+          },
+          botReply
+        };
+      }
+
+      function App() {
+        const [tab, setTab] = useState('chat');
+        const [selectedMonth, setSelectedMonth] = useState('2026-07');
+        const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+        const [isSynced, setIsSynced] = useState(false);
+
+        const [profile, setProfileState] = useState({ partner1: 'Kevin', partner2: 'Milena', incomePartner1: 5000, incomePartner2: 4500, avatar1: '💙', avatar2: '💜' });
+        const [activeUser, setActiveUser] = useState('Kevin');
+        const [config, setConfigState] = useState({ targetNeeds: 60, targetWants: 25, targetFuture: 15 });
+        const [transactions, setTransactionsState] = useState([]);
+        const [chatMessages, setChatMessagesState] = useState([]);
+        const [gamification, setGamificationState] = useState({ level: 3, levelTitle: 'Mestres do Planejamento 🏆', xp: 420, xpNextLevel: 500, streakDays: 5, quests: [], badges: [] });
+        const [wishlist, setWishlistState] = useState([]);
+
+        const isLocalChange = useRef(false);
+
+        const syncToServer = (partialState) => {
+          isLocalChange.current = true;
+          fetch('/api/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(partialState)
+          }).catch(err => console.error('Erro na sincronização:', err));
+        };
+
+        const setTransactions = (updater) => {
+          setTransactionsState(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            syncToServer({ transactions: next });
+            return next;
+          });
+        };
+
+        const setChatMessages = (updater) => {
+          setChatMessagesState(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            syncToServer({ chatMessages: next });
+            return next;
+          });
+        };
+
+        const setGamification = (updater) => {
+          setGamificationState(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            syncToServer({ gamification: next });
+            return next;
+          });
+        };
+
+        const setWishlist = (updater) => {
+          setWishlistState(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            syncToServer({ wishlist: next });
+            return next;
+          });
+        };
+
+        const setConfig = (updater) => {
+          setConfigState(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            syncToServer({ config: next });
+            return next;
+          });
+        };
+
+        const setProfile = (updater) => {
+          setProfileState(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            syncToServer({ profile: next });
+            return next;
+          });
+        };
+
+        useEffect(() => {
+          const fetchSync = () => {
+            fetch('/api/sync')
+              .then(res => res.json())
+              .then(data => {
+                if (data) {
+                  if (data.profile) setProfileState(data.profile);
+                  if (data.config) setConfigState(data.config);
+                  if (data.transactions) setTransactionsState(data.transactions);
+                  if (data.chatMessages) setChatMessagesState(data.chatMessages);
+                  if (data.gamification) setGamificationState(data.gamification);
+                  if (data.wishlist) setWishlistState(data.wishlist);
+                  setIsSynced(true);
+                }
+              }).catch(e => console.warn('Sync offline'));
+          };
+
+          fetchSync();
+          const pollTimer = setInterval(fetchSync, 2500);
+
+          let evtSource;
+          try {
+            evtSource = new EventSource('/api/events');
+            evtSource.onmessage = (event) => {
+              const data = JSON.parse(event.data);
+              if (data) {
+                if (data.profile) setProfileState(data.profile);
+                if (data.config) setConfigState(data.config);
+                if (data.transactions) setTransactionsState(data.transactions);
+                if (data.chatMessages) setChatMessagesState(data.chatMessages);
+                if (data.gamification) setGamificationState(data.gamification);
+                if (data.wishlist) setWishlistState(data.wishlist);
+                setIsSynced(true);
+              }
+            };
+          } catch (e) {}
+
+          return () => {
+            clearInterval(pollTimer);
+            if (evtSource) evtSource.close();
+          };
+        }, []);
+
+        const [editingTx, setEditingTx] = useState(null);
+        const [editingWishItem, setEditingWishItem] = useState(null);
+        const [isAddWishModalOpen, setIsAddWishModalOpen] = useState(false);
+
+        const [newWishName, setNewWishName] = useState('');
+        const [newWishPrice, setNewWishPrice] = useState('');
+        const [newWishCategory, setNewWishCategory] = useState('Compras Pessoais');
+
+        const messagesEndRef = useRef(null);
+        const [inputText, setInputText] = useState('');
+        const [isRecording, setIsRecording] = useState(false);
+        const [recordStatusText, setRecordStatusText] = useState('Escutando sua voz...');
+
+        useEffect(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, [chatMessages, tab]);
+
+        const currentMonthTx = transactions.filter(t => {
+          if (t.monthKey) return t.monthKey === selectedMonth;
+          const tDate = new Date(t.date);
+          return `${tDate.getFullYear()}-${String(tDate.getMonth() + 1).padStart(2, '0')}` === selectedMonth;
+        });
+
+        // Ações do Extrato
+        const handleDeleteTx = (id) => {
+          if (confirm('Deseja realmente apagar este lançamento do extrato?')) {
+            setTransactions(prev => prev.filter(t => t.id !== id));
+          }
+        };
+
+        const handleSaveEditTx = (e) => {
+          e.preventDefault();
+          if (!editingTx) return;
+          setTransactions(prev => prev.map(t => t.id === editingTx.id ? editingTx : t));
+          setEditingTx(null);
+        };
+
+        // Ações da Wishlist
+        const handleAddWishItem = (e) => {
+          e.preventDefault();
+          if (!newWishName || !newWishPrice || parseFloat(newWishPrice) <= 0) return;
+
+          const price = parseFloat(newWishPrice);
+          const xpReq = calculateRequiredXP(price);
+
+          const newItem = {
+            id: Date.now().toString(),
+            name: newWishName,
+            price,
+            category: newWishCategory,
+            purchased: false,
+            xpRequired: xpReq,
+            addedBy: activeUser
+          };
+
+          setWishlist(prev => [newItem, ...prev]);
+          setIsAddWishModalOpen(false);
+          setNewWishName('');
+          setNewWishPrice('');
+        };
+
+        const handleDeleteWishItem = (id) => {
+          if (confirm('Deseja remover este item da lista de desejos?')) {
+            setWishlist(prev => prev.filter(w => w.id !== id));
+          }
+        };
+
+        const handleSaveEditWish = (e) => {
+          e.preventDefault();
+          if (!editingWishItem) return;
+          const updatedReqXP = calculateRequiredXP(editingWishItem.price);
+          setWishlist(prev => prev.map(w => w.id === editingWishItem.id ? { ...editingWishItem, xpRequired: updatedReqXP } : w));
+          setEditingWishItem(null);
+        };
+
+        const handleBuyWishItem = (item) => {
+          if (gamification.xp < item.xpRequired) {
+            alert(`🔒 XP insuficiente! Vocês possuem ${gamification.xp} XP acumulados, mas este item exige ${item.xpRequired} XP.\n\nContinue registrando os gastos da casa no Chat para acumular os ${item.xpRequired - gamification.xp} XP que faltam!`);
+            return;
+          }
+
+          if (confirm(`🎉 Parabéns! Vocês possuem XP suficiente (${gamification.xp} XP >= ${item.xpRequired} XP).\n\nDeseja marcar "${item.name}" (R$ ${item.price.toFixed(2)}) como COMPRADO e lançar no extrato deste mês?`)) {
+            triggerCelebration('wishlist');
+
+            setWishlist(prev => prev.map(w => w.id === item.id ? { ...w, purchased: true } : w));
+
+            const [year, month] = selectedMonth.split('-');
+            const createdDate = new Date(parseInt(year), parseInt(month) - 1, 15, 12, 0).toISOString();
+
+            const buyTx = {
+              id: Date.now().toString(),
+              type: 'expense',
+              amount: item.price,
+              description: `🛍️ [Wishlist] ${item.name}`,
+              category: item.category,
+              pillar: 'wants',
+              user: activeUser,
+              date: createdDate,
+              monthKey: selectedMonth
+            };
+
+            setTransactions(prev => [buyTx, ...prev]);
+
+            setGamification(g => ({
+              ...g,
+              badges: g.badges.map(b => b.id === 'b3' ? { ...b, unlocked: true } : b)
+            }));
+          }
+        };
+
+        const handleSendMsg = (text = inputText) => {
+          if (!text || !text.trim()) return;
+          const cleanText = text.replace(/^🎙️.*?: /, '');
+          const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+          const userMsg = { id: Date.now().toString(), sender: activeUser, type: 'text', content: text, timestamp: time };
+          const result = parseTransactionMessage(cleanText, activeUser, selectedMonth);
+
+          let botMsg = null;
+          if (result.success) {
+            setTransactions(prev => [result.data, ...prev]);
+            setGamification(g => {
+              const newXP = g.xp + result.data.xpEarned;
+              const nextLvl = newXP >= g.xpNextLevel;
+              return { ...g, xp: newXP, level: nextLvl ? g.level + 1 : g.level, xpNextLevel: nextLvl ? g.xpNextLevel + 300 : g.xpNextLevel };
+            });
+
+            // DISPARO DE ANIMAÇÃO E SOM DE ACORDO COM O TIPO DE ENTRADA OU SAÍDA
+            if (result.type === 'income') {
+              triggerCelebration('income'); // Moedas/Estrelas + Som de Aplausos!
+            } else {
+              triggerCelebration('expense'); // Cifrões + Barulho de Caixa Registradora!
+            }
+
+            botMsg = { id: (Date.now() + 1).toString(), sender: 'Bot', type: 'bot', content: result.botReply, timestamp: time };
+          } else {
+            botMsg = { id: (Date.now() + 1).toString(), sender: 'Bot', type: 'bot', content: `🤔 ${result.error}`, timestamp: time };
+          }
+
+          setChatMessages(prev => [...prev, userMsg, botMsg]);
+          setInputText('');
+        };
+
+        const handleStartVoiceRecord = () => {
+          const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+          if (!SpeechRecognition) {
+            alert('ℹ️ No seu celular atual, o navegador exige conexão HTTPS para liberar o microfone por voz.\n\nAmanhã, assim que você publicar no Cloudflare Pages (com https://), o microfone do celular funcionará 100% perfeitamente!');
+            return;
+          }
+
+          try {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'pt-BR';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            setIsRecording(true);
+            setRecordStatusText('🎙️ Fale agora o gasto (ex: "Mercado 250" ou "Receita 500")...');
+
+            recognition.onstart = () => {
+              setRecordStatusText('🎙️ Escutando sua voz... Pode falar!');
+            };
+
+            recognition.onresult = (event) => {
+              const transcript = event.results[0][0].transcript;
+              setIsRecording(false);
+              if (transcript) {
+                handleSendMsg(`🎙️ [Áudio de ${activeUser}]: ${transcript}`);
+              }
+            };
+
+            recognition.onerror = (event) => {
+              console.warn('Erro voz:', event.error);
+              setIsRecording(false);
+              if (event.error === 'not-allowed') {
+                alert('⚠️ Permissão de microfone negada. Permita o uso do microfone nas configurações do navegador!');
+              } else {
+                alert('ℹ️ Dica: No celular, o microfone por voz funcionará 100% assim que estiver no Cloudflare Pages (com HTTPS seguro).');
+              }
+            };
+
+            recognition.onend = () => {
+              setIsRecording(false);
+            };
+
+            recognition.start();
+          } catch (err) {
+            console.error('Speech error:', err);
+            setIsRecording(false);
+          }
+        };
+
+        // CÁLCULOS FINANCEIROS DO DASHBOARD
+        const totalIncome = currentMonthTx.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0) || (profile.incomePartner1 + profile.incomePartner2);
+        const totalSpent = currentMonthTx.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0);
+        
+        const spentNeeds = currentMonthTx.filter(t => t.pillar === 'needs').reduce((a, b) => a + b.amount, 0);
+        const spentWants = currentMonthTx.filter(t => t.pillar === 'wants').reduce((a, b) => a + b.amount, 0);
+        const spentFuture = currentMonthTx.filter(t => t.pillar === 'future').reduce((a, b) => a + b.amount, 0);
+
+        const realPctNeeds = totalIncome > 0 ? (spentNeeds / totalIncome) * 100 : 0;
+        const realPctWants = totalIncome > 0 ? (spentWants / totalIncome) * 100 : 0;
+        const realPctFuture = totalIncome > 0 ? (spentFuture / totalIncome) * 100 : 0;
+        const realPctFree = totalIncome > 0 ? ((totalIncome - totalSpent) / totalIncome) * 100 : 0;
+
+        const targetNeedsR$ = (totalIncome * config.targetNeeds) / 100;
+        const targetWantsR$ = (totalIncome * config.targetWants) / 100;
+        const targetFutureR$ = (totalIncome * config.targetFuture) / 100;
+
+        const currentMonthLabel = MONTHS_LIST.find(m => m.key === selectedMonth)?.label || selectedMonth;
+
+        const navItems = [
+          { id: 'chat', label: 'Web Chat', icon: '💬', badge: null },
+          { id: 'wishlist', label: 'Lista de Desejos', icon: '🛍️', badge: `${wishlist.filter(w=>!w.purchased).length}` },
+          { id: 'dashboard', label: 'Dashboard 50/30/20', icon: '📊', badge: null },
+          { id: 'rebalancer', label: 'Rebalanceador', icon: '⚙️', badge: null },
+          { id: 'gamification', label: `Gamificação`, icon: '🏆', badge: `Nv. ${gamification.level}` },
+          { id: 'extrato', label: 'Extrato', icon: '📝', badge: `${currentMonthTx.length}` }
+        ];
+
+        return (
+          <div className="min-h-screen flex flex-col md:flex-row bg-[#0b0f19]">
+            
+            {mobileMenuOpen && (
+              <div 
+                onClick={() => setMobileMenuOpen(false)}
+                className="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm md:hidden"
+              />
+            )}
+
+            <aside className={`
+              fixed md:static inset-y-0 left-0 z-50 w-72 md:w-64 glass-panel border-r border-slate-800 p-4 shrink-0 flex flex-col justify-between transition-transform duration-300
+              ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+            `}>
+              <div className="space-y-5">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl p-2 bg-gradient-to-tr from-emerald-500 to-purple-600 rounded-xl shadow-lg shadow-emerald-500/20">❤️</span>
+                    <div>
+                      <h1 className="font-extrabold text-base tracking-tight text-white">FinCasal <span className="text-emerald-400">AI</span></h1>
+                      <p className="text-[10px] text-slate-400 font-semibold">{profile.partner1} & {profile.partner2}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setMobileMenuOpen(false)} className="md:hidden text-slate-400 p-1 text-lg">✕</button>
+                </div>
+
+                <nav className="space-y-1.5">
+                  <div className="text-[10px] uppercase font-extrabold text-slate-500 px-3 mb-2 flex justify-between items-center">
+                    <span>Menu Principal</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">🟢 Ao Vivo</span>
+                  </div>
+                  {navItems.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => { setTab(item.id); setMobileMenuOpen(false); }}
+                      className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-bold transition-all ${
+                        tab === item.id
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-600/25 border border-emerald-400/30'
+                          : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-base">{item.icon}</span>
+                        <span>{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <span className={`text-[9px] px-2 py-0.5 rounded-full font-extrabold ${
+                          tab === item.id ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </nav>
+              </div>
+
+              <div className="pt-4 border-t border-slate-800/80 space-y-2">
+                <div className="bg-slate-900/80 p-3 rounded-2xl border border-slate-800 text-xs">
+                  <div className="flex justify-between text-[11px] text-slate-400 font-bold mb-1">
+                    <span>Nível do Casal</span>
+                    <span className="text-amber-300">⭐ {gamification.xp} XP</span>
+                  </div>
+                  <div className="text-xs font-black text-white">{gamification.levelTitle}</div>
+                </div>
+              </div>
+            </aside>
+
+            <div className="flex-1 flex flex-col min-w-0">
+              
+              <header className="sticky top-0 z-30 glass-panel border-b border-slate-800 px-3 sm:px-4 py-2.5">
+                <div className="max-w-6xl mx-auto flex items-center justify-between gap-2">
+                  
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setMobileMenuOpen(true)} 
+                      className="md:hidden p-2 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-200 hover:bg-slate-700 active:scale-95 transition"
+                      aria-label="Abrir Menu"
+                    >
+                      ☰
+                    </button>
+                    
+                    <div className="hidden sm:flex items-center gap-2 text-xs font-bold text-slate-400">
+                      <span>Mês:</span>
+                      <span className="text-amber-300 font-extrabold">{currentMonthLabel}</span>
+                      <span className="text-slate-600">|</span>
+                      <span className="text-emerald-400 text-[11px] flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Sincronizado
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="bg-slate-900 p-1 rounded-xl border border-slate-800 flex gap-0.5 shrink-0">
+                      <button
+                        onClick={() => setActiveUser(profile.partner1)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${activeUser === profile.partner1 ? 'bg-blue-600 text-white shadow' : 'text-slate-400'}`}
+                      >
+                        {profile.avatar1} <span className="hidden xs:inline">{profile.partner1}</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveUser(profile.partner2)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${activeUser === profile.partner2 ? 'bg-purple-600 text-white shadow' : 'text-slate-400'}`}
+                      >
+                        {profile.avatar2} <span className="hidden xs:inline">{profile.partner2}</span>
+                      </button>
+                    </div>
+
+                    <select
+                      value={selectedMonth}
+                      onChange={e => setSelectedMonth(e.target.value)}
+                      className="bg-slate-900 text-amber-300 font-extrabold text-xs px-2.5 py-1.5 rounded-xl border border-amber-500/40 focus:outline-none cursor-pointer"
+                    >
+                      {MONTHS_LIST.map(m => (
+                        <option key={m.key} value={m.key}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </header>
+
+              <main className="flex-1 p-3 sm:p-5 overflow-y-auto">
+                
+                {/* CHAT TAB */}
+                {tab === 'chat' && (
+                  <div className="max-w-3xl mx-auto glass-panel rounded-3xl border border-slate-800 overflow-hidden flex flex-col h-[calc(100vh-110px)] md:h-[75vh]">
+                    <div className="bg-slate-900 p-3 sm:p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-emerald-600 flex items-center justify-center text-lg sm:text-xl font-bold">💬</div>
+                        <div>
+                          <h3 className="font-bold text-xs sm:text-sm text-white">Grupo Finanças Casal</h3>
+                          <p className="text-[10px] text-slate-400">{profile.partner1} & {profile.partner2} • {currentMonthLabel}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="bg-purple-500/20 text-purple-300 text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-full font-bold">⭐ {gamification.xp} XP</span>
+                        <span className="bg-amber-500/20 text-amber-300 text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-full font-bold">🔥 {gamification.streakDays}d</span>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 whatsapp-chat-bg p-3 sm:p-4 overflow-y-auto space-y-3">
+                      {chatMessages.map(msg => (
+                        <div key={msg.id} className={`flex flex-col ${msg.sender !== 'Bot' ? 'items-end' : 'items-start'}`}>
+                          <div className={`max-w-[88%] sm:max-w-[80%] p-3 rounded-2xl text-xs font-medium ${
+                            msg.sender === 'Bot'
+                              ? 'bg-slate-800 text-slate-100 border border-slate-700 rounded-tl-none'
+                              : msg.sender === profile.partner1
+                              ? 'bg-blue-700 text-white rounded-tr-none'
+                              : 'bg-purple-700 text-white rounded-tr-none'
+                          }`}>
+                            <div className="text-[9px] font-bold opacity-75 uppercase mb-0.5">{msg.sender}</div>
+                            <div>{msg.content}</div>
+                            <div className="text-[9px] text-right mt-1 opacity-60">{msg.timestamp}</div>
+                          </div>
+                        </div>
+                      ))}
+                      {isRecording && (
+                        <div className="text-center py-2.5 bg-red-950/90 border border-red-500/40 text-red-200 rounded-2xl recording-active text-xs font-extrabold flex items-center justify-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+                          <span>{recordStatusText}</span>
+                        </div>
+                      )}
+                      <div ref={messagesEndRef} />
+                    </div>
+
+                    <div className="bg-slate-900 p-2.5 sm:p-3 border-t border-slate-800 flex items-center gap-2 shrink-0">
+                      <input
+                        type="text"
+                        value={inputText}
+                        onChange={e => setInputText(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSendMsg()}
+                        placeholder={`Escreva como ${activeUser} (ex: "Mercado 280" ou "Receita 500")...`}
+                        className="flex-1 bg-slate-800 text-sm px-3.5 py-2.5 rounded-2xl border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                      />
+                      <button 
+                        onClick={handleStartVoiceRecord} 
+                        title="Falar por voz via Microfone" 
+                        className={`p-2.5 sm:p-3 rounded-2xl border transition shrink-0 ${isRecording ? 'bg-red-600 text-white border-red-500 animate-pulse' : 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border-slate-700'}`}
+                      >
+                        🎙️
+                      </button>
+                      <button onClick={() => handleSendMsg()} className="px-3.5 sm:px-4 py-2.5 sm:py-3 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs rounded-2xl shadow shrink-0">Enviar</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* WISHLIST TAB */}
+                {tab === 'wishlist' && (
+                  <div className="space-y-4 sm:space-y-6">
+                    <div className="glass-panel p-4 sm:p-6 rounded-3xl bg-gradient-to-r from-pink-950/50 via-purple-950/40 to-slate-900 border border-pink-500/30 space-y-4">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl sm:text-2xl">🛍️</span>
+                            <h2 className="text-base sm:text-xl font-black text-white">Lista de Desejos (XP)</h2>
+                          </div>
+                          <p className="text-[11px] sm:text-xs text-slate-300 mt-0.5">
+                            Vocês **só liberam a compra** de um item quando tiverem **XP suficiente**!
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto bg-slate-900/90 px-3.5 py-2.5 rounded-2xl border border-slate-800 shrink-0">
+                          <div className="text-left sm:text-right">
+                            <div className="text-[9px] text-slate-400 uppercase font-bold">XP Atual</div>
+                            <div className="text-base sm:text-xl font-black text-amber-300">⭐ {gamification.xp} XP</div>
+                          </div>
+                          <button onClick={() => setIsAddWishModalOpen(true)} className="px-3 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-xs font-bold rounded-xl shadow hover:opacity-95 shrink-0">
+                            + Adicionar Item
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900/80 p-3 sm:p-4 rounded-2xl border border-slate-800 space-y-2 text-xs">
+                        <h4 className="font-extrabold text-amber-300 flex items-center gap-1.5 text-xs">
+                          <span>💡 Como Funciona a Coleta de XP?</span>
+                        </h4>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-[10px] sm:text-[11px] text-slate-300 pt-1">
+                          <div className="bg-slate-800/60 p-2 sm:p-2.5 rounded-xl border border-slate-700">
+                            <div className="font-bold text-emerald-400">💬 Chat</div>
+                            <div>+15 a +30 XP por gasto</div>
+                          </div>
+                          <div className="bg-slate-800/60 p-2 sm:p-2.5 rounded-xl border border-slate-700">
+                            <div className="font-bold text-blue-400">🛡️ Reserva</div>
+                            <div>+25 XP por aporte</div>
+                          </div>
+                          <div className="bg-slate-800/60 p-2 sm:p-2.5 rounded-xl border border-slate-700">
+                            <div className="font-bold text-purple-400">🎯 Missões</div>
+                            <div>+100 a +150 XP</div>
+                          </div>
+                          <div className="bg-slate-800/60 p-2 sm:p-2.5 rounded-xl border border-slate-700">
+                            <div className="font-bold text-pink-400">🏷️ Cálculo</div>
+                            <div>R$ 5,00 = <strong>1 XP</strong></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                      {wishlist.map(item => {
+                        const canUnlock = gamification.xp >= item.xpRequired;
+                        const progressPct = Math.min((gamification.xp / item.xpRequired) * 100, 100);
+
+                        return (
+                          <div key={item.id} className={`glass-panel p-4 sm:p-5 rounded-3xl border transition-all space-y-3 sm:space-y-4 ${
+                            item.purchased
+                              ? 'bg-slate-900/60 border-emerald-500/40 opacity-80'
+                              : canUnlock
+                              ? 'bg-slate-900/90 border-pink-500/50 shadow-lg shadow-pink-500/10'
+                              : 'bg-slate-950/50 border-slate-800'
+                          }`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base">{item.purchased ? '✅' : canUnlock ? '🎁' : '🔒'}</span>
+                                  <h3 className="font-extrabold text-xs sm:text-sm text-white">{item.name}</h3>
+                                </div>
+                                <span className="text-[10px] text-slate-400 mt-0.5 block">Adicionado por {item.addedBy} • {item.category}</span>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <div className="text-sm sm:text-base font-black text-white">R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                                <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                  Exige: {item.xpRequired} XP
+                                </span>
+                              </div>
+                            </div>
+
+                            {!item.purchased && (
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-[10px] sm:text-[11px] font-bold">
+                                  <span className="text-slate-400">Progresso de XP</span>
+                                  <span className={canUnlock ? 'text-emerald-400' : 'text-amber-400'}>
+                                    {gamification.xp} / {item.xpRequired} XP ({progressPct.toFixed(0)}%)
+                                  </span>
+                                </div>
+                                <div className="w-full bg-slate-800 h-2 sm:h-2.5 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-500 ${
+                                      canUnlock ? 'bg-gradient-to-r from-emerald-400 to-teal-400' : 'bg-gradient-to-r from-amber-500 to-purple-500'
+                                    }`}
+                                    style={{ width: `${progressPct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 gap-2">
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => setEditingWishItem(item)} className="p-1.5 bg-slate-800 text-blue-400 rounded-lg hover:bg-slate-700 text-xs">✏️</button>
+                                <button onClick={() => handleDeleteWishItem(item.id)} className="p-1.5 bg-slate-800 text-rose-400 rounded-lg hover:bg-slate-700 text-xs">🗑️</button>
+                              </div>
+
+                              {item.purchased ? (
+                                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-xl font-bold text-xs">
+                                  Comprado! 🎉
+                                </span>
+                              ) : canUnlock ? (
+                                <button onClick={() => handleBuyWishItem(item)} className="px-3 sm:px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-xs rounded-xl shadow hover:opacity-95 shrink-0">
+                                  🔓 Desbloqueado! Comprar
+                                </button>
+                              ) : (
+                                <button onClick={() => handleBuyWishItem(item)} className="px-2.5 py-1.5 bg-slate-800 text-slate-500 text-[11px] font-bold rounded-xl border border-slate-700 shrink-0">
+                                  🔒 Faltam {item.xpRequired - gamification.xp} XP
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* DASHBOARD TAB */}
+                {tab === 'dashboard' && (
+                  <div className="space-y-4 sm:space-y-6">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900/80 p-4 sm:p-5 rounded-3xl border border-slate-800">
+                      <div>
+                        <h2 className="text-base sm:text-xl font-black text-white">📊 Dashboard Orçamentário ({currentMonthLabel})</h2>
+                        <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">Visão detalhada das porcentagens reais de Gastos Fixos, Lazer e Economias.</p>
+                      </div>
+
+                      <div className="bg-slate-800/80 px-3.5 py-2 rounded-2xl border border-slate-700 text-left sm:text-right shrink-0 w-full sm:w-auto">
+                        <div className="text-[9px] text-slate-400 uppercase font-bold">Renda Consolidada</div>
+                        <div className="text-sm sm:text-base font-black text-emerald-400">R$ {totalIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                      <div className="glass-card p-3.5 sm:p-5 rounded-3xl border-l-4 border-l-blue-500">
+                        <span className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase block">1. Fixas Reais</span>
+                        <div className="text-base sm:text-2xl font-black text-blue-400 mt-1 sm:mt-2">R$ {spentNeeds.toLocaleString('pt-BR')}</div>
+                        <div className="text-[10px] sm:text-xs font-extrabold text-blue-300 mt-0.5 sm:mt-1">
+                          {realPctNeeds.toFixed(1)}% <span className="text-slate-400 font-normal hidden xs:inline">da renda</span>
+                        </div>
+                      </div>
+
+                      <div className="glass-card p-3.5 sm:p-5 rounded-3xl border-l-4 border-l-amber-500">
+                        <span className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase block">2. Lazer Real</span>
+                        <div className="text-base sm:text-2xl font-black text-amber-400 mt-1 sm:mt-2">R$ {spentWants.toLocaleString('pt-BR')}</div>
+                        <div className="text-[10px] sm:text-xs font-extrabold text-amber-300 mt-0.5 sm:mt-1">
+                          {realPctWants.toFixed(1)}% <span className="text-slate-400 font-normal hidden xs:inline">da renda</span>
+                        </div>
+                      </div>
+
+                      <div className="glass-card p-3.5 sm:p-5 rounded-3xl border-l-4 border-l-emerald-500">
+                        <span className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase block">3. Economias</span>
+                        <div className="text-base sm:text-2xl font-black text-emerald-400 mt-1 sm:mt-2">R$ {spentFuture.toLocaleString('pt-BR')}</div>
+                        <div className="text-[10px] sm:text-xs font-extrabold text-emerald-300 mt-0.5 sm:mt-1">
+                          {realPctFuture.toFixed(1)}% <span className="text-slate-400 font-normal hidden xs:inline">da renda</span>
+                        </div>
+                      </div>
+
+                      <div className="glass-card p-3.5 sm:p-5 rounded-3xl border-l-4 border-l-purple-500">
+                        <span className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase block">Saldo Livre</span>
+                        <div className="text-base sm:text-2xl font-black text-purple-300 mt-1 sm:mt-2">R$ {(totalIncome - totalSpent).toLocaleString('pt-BR')}</div>
+                        <div className="text-[10px] sm:text-xs font-extrabold text-purple-300 mt-0.5 sm:mt-1">
+                          {realPctFree.toFixed(1)}% <span className="text-slate-400 font-normal hidden xs:inline">livre</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="glass-panel p-4 sm:p-6 rounded-3xl space-y-4 sm:space-y-6">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-3">
+                        <div>
+                          <h3 className="font-extrabold text-sm sm:text-base text-white">🎯 Proporção Real de Gastos ({currentMonthLabel})</h3>
+                          <p className="text-[11px] sm:text-xs text-slate-400">Regra configurada: ({config.targetNeeds}/{config.targetWants}/{config.targetFuture})</p>
+                        </div>
+                        <span className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] sm:text-xs font-bold rounded-xl">
+                          Ativo: {config.targetNeeds}% / {config.targetWants}% / {config.targetFuture}%
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-[11px] sm:text-xs font-bold">
+                          <span>Distribuição da Renda (R$ {totalIncome.toLocaleString('pt-BR')})</span>
+                          <span className="text-slate-400">Comprometido: {((totalSpent / (totalIncome || 1)) * 100).toFixed(1)}%</span>
+                        </div>
+                        
+                        <div className="w-full bg-slate-900 h-6 sm:h-7 rounded-2xl overflow-hidden flex p-1 border border-slate-800">
+                          {realPctNeeds > 0 && (
+                            <div className="bg-blue-500 h-full rounded-l-xl transition-all duration-500 flex items-center justify-center text-[10px] font-black text-white" style={{ width: `${realPctNeeds}%` }}>
+                              {realPctNeeds > 10 ? `${realPctNeeds.toFixed(1)}%` : ''}
+                            </div>
+                          )}
+                          {realPctWants > 0 && (
+                            <div className="bg-amber-500 h-full transition-all duration-500 flex items-center justify-center text-[10px] font-black text-slate-950" style={{ width: `${realPctWants}%` }}>
+                              {realPctWants > 10 ? `${realPctWants.toFixed(1)}%` : ''}
+                            </div>
+                          )}
+                          {realPctFuture > 0 && (
+                            <div className="bg-emerald-500 h-full transition-all duration-500 flex items-center justify-center text-[10px] font-black text-slate-950" style={{ width: `${realPctFuture}%` }}>
+                              {realPctFuture > 10 ? `${realPctFuture.toFixed(1)}%` : ''}
+                            </div>
+                          )}
+                          {realPctFree > 0 && (
+                            <div className="bg-slate-800 h-full rounded-r-xl transition-all duration-500 flex items-center justify-center text-[10px] font-bold text-slate-400" style={{ width: `${realPctFree}%` }}>
+                              {realPctFree > 12 ? `Sobra: ${realPctFree.toFixed(1)}%` : ''}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:flex sm:gap-4 text-[10px] sm:text-[11px] text-slate-400 font-bold pt-1 gap-2">
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0"></span> Fixas: {realPctNeeds.toFixed(1)}%</span>
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0"></span> Lazer: {realPctWants.toFixed(1)}%</span>
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span> Economias: {realPctFuture.toFixed(1)}%</span>
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-700 shrink-0"></span> Sobra: {realPctFree.toFixed(1)}%</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 pt-2">
+                        
+                        <div className="bg-slate-900/90 p-4 sm:p-5 rounded-2xl border border-slate-800 space-y-2.5 sm:space-y-3">
+                          <div className="flex justify-between items-center font-bold text-xs">
+                            <span className="text-blue-400 font-extrabold flex items-center gap-1.5">
+                              <span>🏠</span> Necessidades / Fixas
+                            </span>
+                            <span className="bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded text-[10px]">Meta: {config.targetNeeds}%</span>
+                          </div>
+
+                          <div className="flex items-baseline justify-between">
+                            <div className="text-xl sm:text-2xl font-black text-white">{realPctNeeds.toFixed(1)}%</div>
+                            <div className="text-xs font-bold text-slate-400">R$ {spentNeeds.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="w-full bg-slate-800 h-2.5 sm:h-3 rounded-full overflow-hidden">
+                              <div className={`h-full transition-all duration-500 ${realPctNeeds > config.targetNeeds ? 'bg-amber-500' : 'bg-blue-500'}`} style={{ width: `${Math.min((spentNeeds / (targetNeedsR$ || 1)) * 100, 100)}%` }} />
+                            </div>
+                            <div className="flex justify-between text-[10px] font-semibold text-slate-400">
+                              <span>Gasto: R$ {spentNeeds.toFixed(2)}</span>
+                              <span>Teto: R$ {targetNeedsR$.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-900/90 p-4 sm:p-5 rounded-2xl border border-slate-800 space-y-2.5 sm:space-y-3">
+                          <div className="flex justify-between items-center font-bold text-xs">
+                            <span className="text-amber-400 font-extrabold flex items-center gap-1.5">
+                              <span>🍿</span> Lazer & Desejos
+                            </span>
+                            <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded text-[10px]">Meta: {config.targetWants}%</span>
+                          </div>
+
+                          <div className="flex items-baseline justify-between">
+                            <div className="text-xl sm:text-2xl font-black text-white">{realPctWants.toFixed(1)}%</div>
+                            <div className="text-xs font-bold text-slate-400">R$ {spentWants.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="w-full bg-slate-800 h-2.5 sm:h-3 rounded-full overflow-hidden">
+                              <div className={`h-full transition-all duration-500 ${realPctWants > config.targetWants ? 'bg-rose-500' : 'bg-amber-500'}`} style={{ width: `${Math.min((spentWants / (targetWantsR$ || 1)) * 100, 100)}%` }} />
+                            </div>
+                            <div className="flex justify-between text-[10px] font-semibold text-slate-400">
+                              <span>Gasto: R$ {spentWants.toFixed(2)}</span>
+                              <span>Teto: R$ {targetWantsR$.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-900/90 p-4 sm:p-5 rounded-2xl border border-slate-800 space-y-2.5 sm:space-y-3">
+                          <div className="flex justify-between items-center font-bold text-xs">
+                            <span className="text-emerald-400 font-extrabold flex items-center gap-1.5">
+                              <span>🛡️</span> Economias & Futuro
+                            </span>
+                            <span className="bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded text-[10px]">Meta: {config.targetFuture}%</span>
+                          </div>
+
+                          <div className="flex items-baseline justify-between">
+                            <div className="text-xl sm:text-2xl font-black text-white">{realPctFuture.toFixed(1)}%</div>
+                            <div className="text-xs font-bold text-slate-400">R$ {spentFuture.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="w-full bg-slate-800 h-2.5 sm:h-3 rounded-full overflow-hidden">
+                              <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${Math.min((spentFuture / (targetFutureR$ || 1)) * 100, 100)}%` }} />
+                            </div>
+                            <div className="flex justify-between text-[10px] font-semibold text-slate-400">
+                              <span>Guardado: R$ {spentFuture.toFixed(2)}</span>
+                              <span>Meta: R$ {targetFutureR$.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* REBALANCER TAB */}
+                {tab === 'rebalancer' && (
+                  <div className="glass-panel p-4 sm:p-6 rounded-3xl space-y-4 sm:space-y-6 max-w-4xl mx-auto">
+                    <h2 className="text-base sm:text-lg font-black text-white">⚙️ Calculadora e Motor de Rebalanceamento</h2>
+                    <p className="text-xs text-slate-400">Suas contas fixas em {currentMonthLabel} somam <strong>R$ {spentNeeds.toLocaleString('pt-BR')}</strong> ({realPctNeeds.toFixed(1)}% da Renda).</p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                      <div className="bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-800 space-y-1.5">
+                        <label className="text-xs font-bold block">Renda {profile.partner1} R$</label>
+                        <input type="number" value={profile.incomePartner1} onChange={e => setProfile({ ...profile, incomePartner1: parseFloat(e.target.value) || 0 })} className="w-full bg-slate-800 p-2 rounded-xl text-sm font-bold text-white border border-slate-700" />
+                      </div>
+                      <div className="bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-800 space-y-1.5">
+                        <label className="text-xs font-bold block">Renda {profile.partner2} R$</label>
+                        <input type="number" value={profile.incomePartner2} onChange={e => setProfile({ ...profile, incomePartner2: parseFloat(e.target.value) || 0 })} className="w-full bg-slate-800 p-2 rounded-xl text-sm font-bold text-white border border-slate-700" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <h4 className="font-bold text-xs text-slate-200 uppercase">Selecione o Modelo Orçamentário Rebalanceado:</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                        <button onClick={() => setConfig({ targetNeeds: 50, targetWants: 30, targetFuture: 20 })} className={`p-3.5 sm:p-4 rounded-2xl border text-left text-xs font-bold ${config.targetNeeds === 50 ? 'bg-blue-600/30 border-blue-500 text-white' : 'bg-slate-900 border-slate-800'}`}>
+                          <div>50 / 30 / 20</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">Padrão Tradicional</div>
+                        </button>
+                        <button onClick={() => setConfig({ targetNeeds: 60, targetWants: 25, targetFuture: 15 })} className={`p-3.5 sm:p-4 rounded-2xl border text-left text-xs font-bold ${config.targetNeeds === 60 ? 'bg-amber-600/30 border-amber-500 text-white' : 'bg-slate-900 border-slate-800'}`}>
+                          <div>60 / 25 / 15 ⭐</div>
+                          <div className="text-[10px] text-amber-300 mt-0.5">Recomendado (Fixas Altas)</div>
+                        </button>
+                        <button onClick={() => setConfig({ targetNeeds: 65, targetWants: 20, targetFuture: 15 })} className={`p-3.5 sm:p-4 rounded-2xl border text-left text-xs font-bold ${config.targetNeeds === 65 ? 'bg-purple-600/30 border-purple-500 text-white' : 'bg-slate-900 border-slate-800'}`}>
+                          <div>65 / 20 / 15</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">Defensivo Severo</div>
+                        </button>
+                      </div>
+                    </div>
+
+                    <button onClick={() => alert('✅ Regra orçamentária atualizada!')} className="w-full py-3 bg-emerald-500 text-white font-extrabold text-xs rounded-2xl shadow">Salvar Nova Regra</button>
+                  </div>
+                )}
+
+                {/* GAMIFICATION TAB */}
+                {tab === 'gamification' && (
+                  <div className="space-y-4 sm:space-y-6">
+                    <div className="glass-panel p-4 sm:p-6 rounded-3xl bg-gradient-to-r from-purple-950/60 to-slate-900 border border-purple-500/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                      <div>
+                        <span className="text-[10px] sm:text-xs uppercase font-extrabold text-purple-400">Nível do Casal ({profile.partner1} & {profile.partner2})</span>
+                        <h2 className="text-lg sm:text-2xl font-black text-white mt-0.5">{gamification.levelTitle} (Nível {gamification.level})</h2>
+                        <p className="text-xs text-slate-300 mt-0.5">Continuem lançando gastos no Chat para ganhar XP!</p>
+                      </div>
+                      <div className="bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-800 text-left sm:text-center w-full sm:w-auto shrink-0">
+                        <div className="text-[10px] text-slate-400">Experiência</div>
+                        <div className="text-base sm:text-xl font-black text-amber-300">{gamification.xp} / {gamification.xpNextLevel} XP</div>
+                      </div>
+                    </div>
+
+                    <div className="glass-panel p-4 sm:p-6 rounded-3xl space-y-3 sm:space-y-4">
+                      <h3 className="font-extrabold text-xs sm:text-sm uppercase text-slate-300">🎯 Missões da Semana</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {gamification.quests.map(q => (
+                          <div key={q.id} className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 space-y-1.5">
+                            <div className="flex justify-between font-bold text-xs"><span>{q.title}</span><span className="text-purple-400">+{q.rewardXP} XP</span></div>
+                            <p className="text-[11px] text-slate-400">{q.description}</p>
+                            <div className="text-[10px] text-emerald-400 font-bold">{q.completed ? 'Concluído! ✅' : 'Em progresso 🚀'}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* EXTRATO TAB */}
+                {tab === 'extrato' && (
+                  <div className="glass-panel p-4 sm:p-6 rounded-3xl space-y-4">
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                      <div>
+                        <h2 className="text-base sm:text-lg font-black text-white">📝 Extrato ({currentMonthLabel})</h2>
+                        <p className="text-[11px] sm:text-xs text-slate-400">Lançamentos do mês selecionado</p>
+                      </div>
+                    </div>
+
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-slate-900 uppercase text-[10px] font-bold text-slate-400">
+                          <tr>
+                            <th className="p-3">Data</th>
+                            <th className="p-3">Descrição</th>
+                            <th className="p-3">Categoria</th>
+                            <th className="p-3">Pilar</th>
+                            <th className="p-3">Quem Lançou</th>
+                            <th className="p-3 text-right">Valor R$</th>
+                            <th className="p-3 text-center">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800">
+                          {currentMonthTx.map(t => (
+                            <tr key={t.id} className="hover:bg-slate-800/40 transition">
+                              <td className="p-3 text-slate-400">{new Date(t.date).toLocaleDateString('pt-BR')}</td>
+                              <td className="p-3 font-bold text-white">{t.description}</td>
+                              <td className="p-3"><span className="bg-slate-800 px-2 py-0.5 rounded text-[11px] text-slate-300">{t.category}</span></td>
+                              <td className="p-3">
+                                <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                                  t.pillar === 'needs' ? 'bg-blue-500/20 text-blue-300' : t.pillar === 'wants' ? 'bg-amber-500/20 text-amber-300' : t.pillar === 'future' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-purple-500/20 text-purple-300'
+                                }`}>
+                                  {t.pillar === 'needs' ? 'Necessidades' : t.pillar === 'wants' ? 'Desejos' : t.pillar === 'future' ? 'Futuro' : 'Receita'}
+                                </span>
+                              </td>
+                              <td className="p-3 font-bold">{t.user}</td>
+                              <td className={`p-3 text-right font-black ${t.type === 'income' ? 'text-emerald-400' : 'text-slate-100'}`}>
+                                {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="p-3 text-center">
+                                <div className="flex justify-center items-center gap-1">
+                                  <button onClick={() => setEditingTx(t)} className="p-1.5 bg-slate-800 text-blue-400 rounded-lg hover:bg-slate-700" title="Editar Lançamento">✏️</button>
+                                  <button onClick={() => handleDeleteTx(t.id)} className="p-1.5 bg-slate-800 text-rose-400 rounded-lg hover:bg-slate-700" title="Excluir Lançamento">🗑️</button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="block md:hidden space-y-2.5">
+                      {currentMonthTx.map(t => (
+                        <div key={t.id} className="bg-slate-900/90 p-3.5 rounded-2xl border border-slate-800 flex justify-between items-center">
+                          <div className="space-y-1">
+                            <div className="font-bold text-xs text-white">{t.description}</div>
+                            <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                              <span className="text-slate-400">{new Date(t.date).toLocaleDateString('pt-BR')}</span>
+                              <span className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">{t.category}</span>
+                              <span className="font-bold text-slate-400">• {t.user}</span>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <div className={`font-black text-sm ${t.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
+                              {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </div>
+                            <div className="flex items-center justify-end gap-1 mt-1">
+                              <button onClick={() => setEditingTx(t)} className="p-1 bg-slate-800 text-blue-400 rounded hover:bg-slate-700 text-[10px]">✏️</button>
+                              <button onClick={() => handleDeleteTx(t.id)} className="p-1 bg-slate-800 text-rose-400 rounded hover:bg-slate-700 text-[10px]">🗑️</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {currentMonthTx.length === 0 && (
+                        <div className="text-center py-8 text-xs text-slate-500">
+                          Nenhum lançamento registrado em {currentMonthLabel}.
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                )}
+
+                {/* MODAIS */}
+                {isAddWishModalOpen && (
+                  <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+                    <div className="glass-panel p-5 sm:p-6 rounded-3xl max-w-md w-full border border-slate-700 space-y-4">
+                      <h3 className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
+                        <span>🛍️</span> Adicionar Novo Item à Wishlist
+                      </h3>
+                      <form onSubmit={handleAddWishItem} className="space-y-3 text-xs">
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Nome do Item Desejado</label>
+                          <input type="text" required placeholder="Ex: Viagem, Air Fryer..." value={newWishName} onChange={e => setNewWishName(e.target.value)} className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700" />
+                        </div>
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Valor Estimado R$</label>
+                          <input type="number" step="0.01" required placeholder="Ex: 450,00" value={newWishPrice} onChange={e => setNewWishPrice(e.target.value)} className="w-full bg-slate-900 text-white font-bold p-2.5 rounded-xl border border-slate-700" />
+                          {newWishPrice && (
+                            <span className="text-[10px] text-amber-300 font-bold mt-1 block">
+                              ⭐ Exigirá {calculateRequiredXP(newWishPrice)} XP do casal!
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Categoria</label>
+                          <select value={newWishCategory} onChange={e => setNewWishCategory(e.target.value)} className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700">
+                            <option value="Compras Pessoais">Compras Pessoais</option>
+                            <option value="Lazer & Passeios">Lazer & Passeios</option>
+                            <option value="Assinaturas & Tech">Assinaturas & Tech</option>
+                            <option value="Restaurante">Restaurante</option>
+                          </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2">
+                          <button type="button" onClick={() => setIsAddWishModalOpen(false)} className="px-3 py-2 text-slate-400 hover:text-white font-bold">Cancelar</button>
+                          <button type="submit" className="px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white font-bold rounded-xl shadow">Adicionar</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+                {editingWishItem && (
+                  <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+                    <div className="glass-panel p-5 sm:p-6 rounded-3xl max-w-md w-full border border-slate-700 space-y-4">
+                      <h3 className="font-extrabold text-sm sm:text-base text-white">Editar Item da Wishlist</h3>
+                      <form onSubmit={handleSaveEditWish} className="space-y-3 text-xs">
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Nome do Item</label>
+                          <input type="text" value={editingWishItem.name} onChange={e => setEditingWishItem({ ...editingWishItem, name: e.target.value })} className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700" />
+                        </div>
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Valor Estimado R$</label>
+                          <input type="number" step="0.01" value={editingWishItem.price} onChange={e => setEditingWishItem({ ...editingWishItem, price: parseFloat(e.target.value) || 0 })} className="w-full bg-slate-900 text-white font-bold p-2.5 rounded-xl border border-slate-700" />
+                          <span className="text-[10px] text-amber-300 font-bold mt-1 block">
+                            ⭐ XP recalculado: {calculateRequiredXP(editingWishItem.price)} XP
+                          </span>
+                        </div>
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Categoria</label>
+                          <select value={editingWishItem.category} onChange={e => setEditingWishItem({ ...editingWishItem, category: e.target.value })} className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700">
+                            <option value="Compras Pessoais">Compras Pessoais</option>
+                            <option value="Lazer & Passeios">Lazer & Passeios</option>
+                            <option value="Assinaturas & Tech">Assinaturas & Tech</option>
+                            <option value="Restaurante">Restaurante</option>
+                          </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2">
+                          <button type="button" onClick={() => setEditingWishItem(null)} className="px-3 py-2 text-slate-400 hover:text-white font-bold">Cancelar</button>
+                          <button type="submit" className="px-4 py-2 bg-pink-600 text-white font-bold rounded-xl">Salvar Alterações</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+                {editingTx && (
+                  <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+                    <div className="glass-panel p-5 sm:p-6 rounded-3xl max-w-md w-full border border-slate-700 space-y-4">
+                      <h3 className="font-extrabold text-sm sm:text-base text-white">Editar Lançamento</h3>
+                      <form onSubmit={handleSaveEditTx} className="space-y-3 text-xs">
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Descrição</label>
+                          <input type="text" value={editingTx.description} onChange={e => setEditingTx({ ...editingTx, description: e.target.value })} className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700" />
+                        </div>
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Valor R$</label>
+                          <input type="number" step="0.01" value={editingTx.amount} onChange={e => setEditingTx({ ...editingTx, amount: parseFloat(e.target.value) || 0 })} className="w-full bg-slate-900 text-white font-bold p-2.5 rounded-xl border border-slate-700" />
+                        </div>
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Categoria</label>
+                          <select value={editingTx.category} onChange={e => setEditingTx({ ...editingTx, category: e.target.value, pillar: CATEGORIES_CONFIG[e.target.value]?.pillar || editingTx.pillar })} className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700">
+                            {Object.keys(CATEGORIES_CONFIG).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Quem Lançou</label>
+                          <select value={editingTx.user} onChange={e => setEditingTx({ ...editingTx, user: e.target.value })} className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700">
+                            <option value={profile.partner1}>{profile.partner1}</option>
+                            <option value={profile.partner2}>{profile.partner2}</option>
+                          </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2">
+                          <button type="button" onClick={() => setEditingTx(null)} className="px-3 py-2 text-slate-400 hover:text-white font-bold">Cancelar</button>
+                          <button type="submit" className="px-4 py-2 bg-emerald-500 text-white font-bold rounded-xl">Salvar Alterações</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+              </main>
+            </div>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+</html>
