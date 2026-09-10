@@ -231,18 +231,62 @@
         return Math.max(20, Math.ceil((parseFloat(price) || 0) / 5));
       }
 
+      function escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+
       function parseTransactionMessage(text, currentUserName = 'Kevin', selectedMonthKey = '2026-07') {
         if (!text) return null;
         const raw = text.trim();
         const lower = raw.toLowerCase();
 
-        const amountMatch = lower.match(/(?:r\$\s*)?(\d+(?:[\.,]\d{1,2})?)/i);
-        if (!amountMatch) {
-          return { success: false, error: 'Não consegui identificar o valor. Fale ou escreva por exemplo: "Mercado 150" ou "Receita 500"' };
+        // Padrão abrangente para valores em formato brasileiro ou internacional:
+        // 1. Milhares com ponto (ex: 2.800 ou 10.000,50)
+        // 2. Milhares com vírgula (ex: 2,800.50)
+        // 3. Decimais com vírgula ou ponto (ex: 2800,50 ou 150,50 ou 2.8)
+        // 4. Inteiros simples (ex: 2800, 150)
+        // Seguido opcionalmente de multiplicador ('mil' ou 'k')
+        const amountPattern = /(?:r\$\s*)?(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:[,\.]\d{1,2})?|\d+)\s*(mil\b|k\b)?/i;
+
+        const match = lower.match(amountPattern);
+        if (!match) {
+          return { success: false, error: 'Não consegui identificar o valor. Fale ou escreva por exemplo: "Mercado 150" ou "Aluguel 2.800"' };
         }
 
-        const amount = parseFloat(amountMatch[1].replace(',', '.'));
-        if (isNaN(amount) || amount <= 0) return { success: false, error: 'Valor inválido. Tente um valor maior que zero.' };
+        const rawMatchedText = match[0];
+        const numStr = match[1];
+        const multiplier = match[2] ? match[2].toLowerCase() : null;
+
+        let baseAmount = 0;
+
+        if (/\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?/.test(numStr)) {
+          // Ex: 2.800 ou 10.000,50 -> remove pontos de milhar e troca vírgula decimal por ponto
+          const cleanStr = numStr.replace(/\./g, '').replace(',', '.');
+          baseAmount = parseFloat(cleanStr);
+        } else if (/\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?/.test(numStr)) {
+          // Ex: 2,800.50 -> remove vírgulas de milhar
+          const cleanStr = numStr.replace(/,/g, '');
+          baseAmount = parseFloat(cleanStr);
+        } else if (/[,\.]/.test(numStr)) {
+          // Ex: 150,50 ou 2.8
+          baseAmount = parseFloat(numStr.replace(',', '.'));
+        } else {
+          // Inteiro puro: 2800, 150
+          baseAmount = parseFloat(numStr);
+        }
+
+        if (isNaN(baseAmount) || baseAmount <= 0) {
+          return { success: false, error: 'Valor inválido. Tente um valor maior que zero.' };
+        }
+
+        // Se tiver multiplicador 'mil' ou 'k':
+        let amount = baseAmount;
+        if (multiplier) {
+          // Se o valor já for >= 1000 (ex: "2.800 mil" ou "2800 mil"), não multiplica novamente
+          if (baseAmount < 1000) {
+            amount = baseAmount * 1000;
+          }
+        }
 
         // RECONHECIMENTO DE ENTRADAS / RECEITAS
         const incomeKeywords = CATEGORIES_CONFIG['Salário & Rendimentos'].keywords;
@@ -267,21 +311,32 @@
           }
         }
 
-        let description = raw.replace(/(?:r\$\s*)?\d+(?:[\.,]\d{1,2})?/gi, '').replace(/\b(fixo|fixa|para|de|do|da|com|\+-)\b/gi, '').trim();
-        if (!description) description = matchedCategory;
+        let description = raw
+          .replace(new RegExp(escapeRegExp(rawMatchedText), 'i'), '')
+          .replace(/\b(reais|real|conto|pila|r\$|mil|k)\b/gi, '')
+          .replace(/\b(fixo|fixa|para|de|do|da|com|no|na|\+-)\b/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (!description) {
+          description = matchedCategory;
+        } else {
+          description = description.charAt(0).toUpperCase() + description.slice(1);
+        }
 
         const [year, month] = selectedMonthKey.split('-');
         const createdDate = new Date(parseInt(year), parseInt(month) - 1, 15, 12, 0).toISOString();
 
         const xpEarned = isIncome ? 30 : (matchedPillar === 'future' ? 25 : 15);
+        const formattedAmount = amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         
         let botReply = '';
         if (isIncome) {
-          botReply = `💰 *ENTRADA/RECEITA REGISTRADA!* R$ ${amount.toFixed(2)} (${description}) adicionados à renda do casal por ${currentUserName}! +${xpEarned} XP! ✨`;
+          botReply = `💰 *ENTRADA/RECEITA REGISTRADA!* R$ ${formattedAmount} (${description}) adicionados à renda do casal por ${currentUserName}! +${xpEarned} XP! ✨`;
         } else if (matchedPillar === 'future') {
-          botReply = `🛡️ *RESERVA/ECONOMIA REGISTRADA!* R$ ${amount.toFixed(2)} guardados em ${matchedCategory} por ${currentUserName}! +${xpEarned} XP! 📈`;
+          botReply = `🛡️ *RESERVA/ECONOMIA REGISTRADA!* R$ ${formattedAmount} guardados em ${matchedCategory} por ${currentUserName}! +${xpEarned} XP! 📈`;
         } else {
-          botReply = `✅ Registrado, ${currentUserName}! R$ ${amount.toFixed(2)} em *${description}* (${matchedCategory}). +${xpEarned} XP gerados! 🚀`;
+          botReply = `✅ Registrado, ${currentUserName}! R$ ${formattedAmount} em *${description}* (${matchedCategory}). +${xpEarned} XP gerados! 🚀`;
         }
 
         return {
@@ -291,7 +346,7 @@
             id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
             type,
             amount,
-            description: description.charAt(0).toUpperCase() + description.slice(1),
+            description,
             category: matchedCategory,
             pillar: matchedPillar,
             user: currentUserName,
