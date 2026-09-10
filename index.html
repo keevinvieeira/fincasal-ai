@@ -113,18 +113,31 @@
       ];
 
       const CATEGORIES_CONFIG = {
+        // NECESSIDADES (50%)
         'Alimentação': { pillar: 'needs', icon: '🛒', color: '#10b981', keywords: ['mercado', 'supermercado', 'feira', 'padaria', 'sacolão', 'açougue', 'compras'] },
         'Moradia': { pillar: 'needs', icon: '🏠', color: '#3b82f6', keywords: ['aluguel', 'apartamento', 'parcela apartamento', 'condomínio', 'condominio', 'iptu', 'reforma'] },
         'Contas Essenciais': { pillar: 'needs', icon: '💡', color: '#06b6d4', keywords: ['luz', 'energia', 'gás', 'gas', 'água', 'saneamento', 'internet', 'wifi', 'celular'] },
         'Saúde': { pillar: 'needs', icon: '💊', color: '#ec4899', keywords: ['farmácia', 'remédio', 'médico', 'consulta', 'exame', 'dentista'] },
         'Transporte': { pillar: 'needs', icon: '🚗', color: '#6366f1', keywords: ['parcela carro', 'carro', 'combustível', 'gasolina', 'etanol', 'uber', '99', 'estacionamento'] },
+
+        // DESEJOS (30%)
         'Lazer & Passeios': { pillar: 'wants', icon: '🍿', color: '#f59e0b', keywords: ['cinema', 'filme', 'passeio', 'show', 'teatro', 'viagem', 'praia'] },
         'Restaurante': { pillar: 'wants', icon: '🍽️', color: '#f97316', keywords: ['restaurante', 'almoço', 'jantar', 'ifood', 'delivery', 'pizza', 'hambúrguer', 'bar', 'cerveja'] },
         'Assinaturas & Tech': { pillar: 'wants', icon: '📺', color: '#8b5cf6', keywords: ['netflix', 'spotify', 'prime', 'disney', 'youtube', 'game', 'psn', 'chatgpt'] },
         'Compras Pessoais': { pillar: 'wants', icon: '🛍️', color: '#d946ef', keywords: ['roupa', 'sapato', 'tênis', 'cosmético', 'presente', 'salão', 'barbeiro'] },
+        'Outros Gastos': { pillar: 'wants', icon: '📦', color: '#94a3b8', keywords: ['outros', 'gasto', 'despesa', 'avulso'] },
+
+        // FUTURO / INVESTIMENTOS (20%)
         'Reserva de Emergência': { pillar: 'future', icon: '🛡️', color: '#10b981', keywords: ['reserva', 'emergência', 'emergencia', 'guardar', 'guardei', 'poupança', 'poupanca', 'economia', 'economizei'] },
         'Investimentos': { pillar: 'future', icon: '📈', color: '#059669', keywords: ['investimento', 'investi', 'ações', 'fii', 'tesouro', 'cdb', 'cripto', 'aporte'] },
-        'Salário & Rendimentos': { pillar: 'income', icon: '💰', color: '#22c55e', keywords: ['salário', 'salario', 'pagamento', 'freelance', 'pix', 'rendimento', 'bônus', 'bonus', 'receita', 'recebi', 'ganhei', 'ganho', 'faturei', 'faturamento', 'depósito', 'deposito', 'entrada', 'prolabore', 'comissão', 'comissao', 'venda', 'reembolso', 'cashback'] }
+
+        // ENTRADAS / RENDA
+        'Salário & Rendimentos': { pillar: 'income', icon: '💰', color: '#22c55e', keywords: ['salário', 'salario', 'pagamento', 'prolabore', 'remuneração'] },
+        'Freelance & Bicos': { pillar: 'income', icon: '💻', color: '#10b981', keywords: ['freelance', 'freela', 'bico', 'job', 'serviço'] },
+        'Vendas & Extras': { pillar: 'income', icon: '🏷️', color: '#34d399', keywords: ['venda', 'vendi', 'desapego', 'extra', 'comissão', 'comissao', 'bônus', 'bonus'] },
+        'Rendimentos & Dividendos': { pillar: 'income', icon: '📊', color: '#059669', keywords: ['rendimento', 'dividendo', 'juros', 'lucro'] },
+        'Reembolso & Cashback': { pillar: 'income', icon: '🔄', color: '#14b8a6', keywords: ['reembolso', 'cashback', 'estorno'] },
+        'Outras Entradas': { pillar: 'income', icon: '✨', color: '#6ee7b7', keywords: ['pix', 'receita', 'recebi', 'ganhei', 'ganho', 'faturei', 'faturamento', 'depósito', 'deposito', 'entrada'] }
       };
 
       // MOTOR SINTETIZADOR DE EFEITOS SONOROS E ANIMAÇÕES
@@ -289,24 +302,25 @@
         }
 
         // RECONHECIMENTO DE ENTRADAS / RECEITAS
-        const incomeKeywords = CATEGORIES_CONFIG['Salário & Rendimentos'].keywords;
+        const incomeCategories = Object.entries(CATEGORIES_CONFIG).filter(([_, cfg]) => cfg.pillar === 'income');
+        const incomeKeywords = incomeCategories.flatMap(([_, cfg]) => cfg.keywords);
         const isIncome = incomeKeywords.some(kw => lower.includes(kw));
 
         const type = isIncome ? 'income' : 'expense';
 
-        let matchedCategory = isIncome ? 'Salário & Rendimentos' : 'Outros';
+        let matchedCategory = isIncome ? 'Salário & Rendimentos' : 'Outros Gastos';
         let matchedPillar = isIncome ? 'income' : 'wants';
 
-        if (!isIncome) {
-          let maxScore = 0;
-          for (const [cat, cfg] of Object.entries(CATEGORIES_CONFIG)) {
-            if (cat === 'Salário & Rendimentos') continue;
-            for (const kw of cfg.keywords) {
-              if (lower.includes(kw) && kw.length > maxScore) {
-                maxScore = kw.length;
-                matchedCategory = cat;
-                matchedPillar = cfg.pillar;
-              }
+        let maxScore = 0;
+        for (const [cat, cfg] of Object.entries(CATEGORIES_CONFIG)) {
+          if (isIncome && cfg.pillar !== 'income') continue;
+          if (!isIncome && cfg.pillar === 'income') continue;
+
+          for (const kw of cfg.keywords) {
+            if (lower.includes(kw) && kw.length > maxScore) {
+              maxScore = kw.length;
+              matchedCategory = cat;
+              matchedPillar = cfg.pillar;
             }
           }
         }
@@ -905,7 +919,23 @@
         const handleSaveEditTx = (e) => {
           e.preventDefault();
           if (!editingTx) return;
-          const nextTx = transactions.map(t => t.id === editingTx.id ? editingTx : t);
+
+          const isIncome = editingTx.pillar === 'income' || editingTx.type === 'income';
+          const type = isIncome ? 'income' : 'expense';
+          const pillar = editingTx.pillar || (isIncome ? 'income' : 'wants');
+          const xpEarned = isIncome ? 30 : (pillar === 'future' ? 25 : 15);
+
+          const updatedTx = {
+            ...editingTx,
+            type,
+            pillar,
+            amount: Math.abs(parseFloat(editingTx.amount)) || 0,
+            description: editingTx.description?.trim() || editingTx.category,
+            category: editingTx.category?.trim() || (isIncome ? 'Salário & Rendimentos' : 'Outros Gastos'),
+            xpEarned
+          };
+
+          const nextTx = transactions.map(t => t.id === updatedTx.id ? updatedTx : t);
           setTransactionsState(nextTx);
           const nextGam = computeXPState(nextTx, gamification.quests, wishlist, gamification);
           setGamificationState(nextGam);
@@ -1857,9 +1887,13 @@
                               <td className="p-3"><span className="bg-slate-800 px-2 py-0.5 rounded text-[11px] text-slate-300">{t.category}</span></td>
                               <td className="p-3">
                                 <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
-                                  t.pillar === 'needs' ? 'bg-blue-500/20 text-blue-300' : t.pillar === 'wants' ? 'bg-amber-500/20 text-amber-300' : t.pillar === 'future' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-purple-500/20 text-purple-300'
+                                  t.type === 'income' || t.pillar === 'income' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                                  t.pillar === 'needs' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' :
+                                  t.pillar === 'future' ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                                 }`}>
-                                  {t.pillar === 'needs' ? 'Necessidades' : t.pillar === 'wants' ? 'Desejos' : t.pillar === 'future' ? 'Futuro' : 'Receita'}
+                                  {t.type === 'income' || t.pillar === 'income' ? '💰 Renda / Entrada' :
+                                   t.pillar === 'needs' ? '🏠 Necessidades' :
+                                   t.pillar === 'future' ? '🛡️ Futuro' : '🍿 Desejos'}
                                 </span>
                               </td>
                               <td className="p-3 font-bold">{t.user}</td>
@@ -1885,7 +1919,16 @@
                             <div className="font-bold text-xs text-white">{t.description}</div>
                             <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
                               <span className="text-slate-400">{new Date(t.date).toLocaleDateString('pt-BR')}</span>
-                              <span className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">{t.category}</span>
+                              <span className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-300 font-medium">{t.category}</span>
+                              <span className={`px-1.5 py-0.5 rounded font-bold ${
+                                t.type === 'income' || t.pillar === 'income' ? 'bg-emerald-500/20 text-emerald-300' :
+                                t.pillar === 'needs' ? 'bg-blue-500/20 text-blue-300' :
+                                t.pillar === 'future' ? 'bg-teal-500/20 text-teal-300' : 'bg-amber-500/20 text-amber-300'
+                              }`}>
+                                {t.type === 'income' || t.pillar === 'income' ? '💰 Renda' :
+                                 t.pillar === 'needs' ? '🏠 Necessidades' :
+                                 t.pillar === 'future' ? '🛡️ Futuro' : '🍿 Desejos'}
+                              </span>
                               <span className="font-bold text-slate-400">• {t.user}</span>
                             </div>
                           </div>
@@ -2032,33 +2075,214 @@
 
                 {editingTx && (
                   <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-                    <div className="glass-panel p-5 sm:p-6 rounded-3xl max-w-md w-full border border-slate-700 space-y-4">
-                      <h3 className="font-extrabold text-sm sm:text-base text-white">Editar Lançamento</h3>
-                      <form onSubmit={handleSaveEditTx} className="space-y-3 text-xs">
+                    <div className="glass-panel p-5 sm:p-6 rounded-3xl max-w-md w-full border border-slate-700 space-y-4 max-h-[90vh] overflow-y-auto">
+                      <div className="flex justify-between items-center border-b border-slate-800 pb-2.5">
                         <div>
-                          <label className="text-slate-400 font-bold block mb-1">Descrição</label>
-                          <input type="text" value={editingTx.description} onChange={e => setEditingTx({ ...editingTx, description: e.target.value })} className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700" />
+                          <h3 className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
+                            <span>✏️ Editar Lançamento</span>
+                          </h3>
+                          <p className="text-[10px] text-slate-400">Ajuste o tipo, categoria e pilar da transação</p>
                         </div>
+                        <button type="button" onClick={() => setEditingTx(null)} className="text-slate-400 hover:text-white font-bold text-sm">✕</button>
+                      </div>
+
+                      <form onSubmit={handleSaveEditTx} className="space-y-3.5 text-xs">
+                        {/* Seletor de Tipo de Lançamento */}
                         <div>
-                          <label className="text-slate-400 font-bold block mb-1">Valor R$</label>
-                          <input type="number" step="0.01" value={editingTx.amount} onChange={e => setEditingTx({ ...editingTx, amount: parseFloat(e.target.value) || 0 })} className="w-full bg-slate-900 text-white font-bold p-2.5 rounded-xl border border-slate-700" />
+                          <label className="text-slate-400 font-bold block mb-1">Tipo de Lançamento</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newCat = CATEGORIES_CONFIG[editingTx.category]?.pillar === 'income' ? editingTx.category : 'Salário & Rendimentos';
+                                setEditingTx({
+                                  ...editingTx,
+                                  type: 'income',
+                                  pillar: 'income',
+                                  category: newCat,
+                                  xpEarned: 30
+                                });
+                              }}
+                              className={`py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition border cursor-pointer ${
+                                editingTx.type === 'income' || editingTx.pillar === 'income'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500 shadow-md shadow-emerald-500/10'
+                                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
+                              }`}
+                            >
+                              <span>💰 Entrada / Receita</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newPillar = editingTx.pillar === 'income' ? 'needs' : editingTx.pillar;
+                                const newCat = CATEGORIES_CONFIG[editingTx.category]?.pillar !== 'income' ? editingTx.category : 'Outros Gastos';
+                                setEditingTx({
+                                  ...editingTx,
+                                  type: 'expense',
+                                  pillar: newPillar,
+                                  category: newCat,
+                                  xpEarned: newPillar === 'future' ? 25 : 15
+                                });
+                              }}
+                              className={`py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition border cursor-pointer ${
+                                editingTx.type !== 'income' && editingTx.pillar !== 'income'
+                                  ? 'bg-rose-500/20 text-rose-300 border-rose-500 shadow-md shadow-rose-500/10'
+                                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
+                              }`}
+                            >
+                              <span>💸 Saída / Despesa</span>
+                            </button>
+                          </div>
                         </div>
+
+                        {/* Seletor de Pilar Financeiro */}
                         <div>
-                          <label className="text-slate-400 font-bold block mb-1">Categoria</label>
-                          <select value={editingTx.category} onChange={e => setEditingTx({ ...editingTx, category: e.target.value, pillar: CATEGORIES_CONFIG[e.target.value]?.pillar || editingTx.pillar })} className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700">
-                            {Object.keys(CATEGORIES_CONFIG).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                          <label className="text-slate-400 font-bold block mb-1">Pilar Financeiro</label>
+                          <select
+                            value={editingTx.pillar || (editingTx.type === 'income' ? 'income' : 'wants')}
+                            onChange={e => {
+                              const selectedPillar = e.target.value;
+                              const isInc = selectedPillar === 'income';
+                              const newType = isInc ? 'income' : 'expense';
+                              let newCat = editingTx.category;
+                              if (CATEGORIES_CONFIG[newCat]?.pillar !== selectedPillar) {
+                                const firstOfPillar = Object.entries(CATEGORIES_CONFIG).find(([_, cfg]) => cfg.pillar === selectedPillar);
+                                newCat = firstOfPillar ? firstOfPillar[0] : (isInc ? 'Salário & Rendimentos' : 'Outros Gastos');
+                              }
+                              setEditingTx({
+                                ...editingTx,
+                                pillar: selectedPillar,
+                                type: newType,
+                                category: newCat,
+                                xpEarned: isInc ? 30 : (selectedPillar === 'future' ? 25 : 15)
+                              });
+                            }}
+                            className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700 font-bold focus:border-purple-500"
+                          >
+                            <option value="income">💰 Renda / Entradas (Receitas do Casal)</option>
+                            <option value="needs">🏠 Necessidades (50% - Moradia, Mercado, Contas, Saúde, Transporte)</option>
+                            <option value="wants">🍿 Desejos (30% - Lazer, Restaurante, Tech, Compras)</option>
+                            <option value="future">🛡️ Futuro / Reserva & Investimentos (20%)</option>
                           </select>
                         </div>
+
+                        {/* Seletor de Categoria */}
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Categoria</label>
+                          <select
+                            value={editingTx.category}
+                            onChange={e => {
+                              const newCategory = e.target.value;
+                              const cfg = CATEGORIES_CONFIG[newCategory];
+                              const newPillar = cfg?.pillar || editingTx.pillar;
+                              const newType = newPillar === 'income' ? 'income' : 'expense';
+                              setEditingTx({
+                                ...editingTx,
+                                category: newCategory,
+                                pillar: newPillar,
+                                type: newType,
+                                xpEarned: newType === 'income' ? 30 : (newPillar === 'future' ? 25 : 15)
+                              });
+                            }}
+                            className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700 font-bold focus:border-purple-500"
+                          >
+                            {editingTx.type === 'income' || editingTx.pillar === 'income' ? (
+                              <optgroup label="💰 Entradas / Renda">
+                                {Object.entries(CATEGORIES_CONFIG).filter(([_, c]) => c.pillar === 'income').map(([cat, c]) => (
+                                  <option key={cat} value={cat}>{c.icon} {cat}</option>
+                                ))}
+                              </optgroup>
+                            ) : (
+                              <>
+                                <optgroup label="🏠 Necessidades (50%)">
+                                  {Object.entries(CATEGORIES_CONFIG).filter(([_, c]) => c.pillar === 'needs').map(([cat, c]) => (
+                                    <option key={cat} value={cat}>{c.icon} {cat}</option>
+                                  ))}
+                                </optgroup>
+                                <optgroup label="🍿 Desejos (30%)">
+                                  {Object.entries(CATEGORIES_CONFIG).filter(([_, c]) => c.pillar === 'wants').map(([cat, c]) => (
+                                    <option key={cat} value={cat}>{c.icon} {cat}</option>
+                                  ))}
+                                </optgroup>
+                                <optgroup label="🛡️ Futuro (20%)">
+                                  {Object.entries(CATEGORIES_CONFIG).filter(([_, c]) => c.pillar === 'future').map(([cat, c]) => (
+                                    <option key={cat} value={cat}>{c.icon} {cat}</option>
+                                  ))}
+                                </optgroup>
+                              </>
+                            )}
+                            {editingTx.category && !CATEGORIES_CONFIG[editingTx.category] && (
+                              <optgroup label="Outra / Personalizada">
+                                <option value={editingTx.category}>{editingTx.category}</option>
+                              </optgroup>
+                            )}
+                          </select>
+                        </div>
+
+                        {/* Descrição */}
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Descrição</label>
+                          <input
+                            type="text"
+                            value={editingTx.description || ''}
+                            onChange={e => setEditingTx({ ...editingTx, description: e.target.value })}
+                            className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700 font-bold focus:border-purple-500"
+                          />
+                        </div>
+
+                        {/* Valor R$ */}
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Valor R$</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={editingTx.amount}
+                            onChange={e => setEditingTx({ ...editingTx, amount: parseFloat(e.target.value) || 0 })}
+                            className="w-full bg-slate-900 text-white font-bold p-2.5 rounded-xl border border-slate-700 focus:border-purple-500"
+                          />
+                        </div>
+
+                        {/* Mês de Competência */}
+                        <div>
+                          <label className="text-slate-400 font-bold block mb-1">Mês de Competência</label>
+                          <select
+                            value={editingTx.monthKey || selectedMonth}
+                            onChange={e => setEditingTx({ ...editingTx, monthKey: e.target.value })}
+                            className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700 font-bold focus:border-purple-500"
+                          >
+                            {MONTHS_LIST.map(m => (
+                              <option key={m.key} value={m.key}>{m.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Quem Lançou */}
                         <div>
                           <label className="text-slate-400 font-bold block mb-1">Quem Lançou</label>
-                          <select value={editingTx.user} onChange={e => setEditingTx({ ...editingTx, user: e.target.value })} className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700">
+                          <select
+                            value={editingTx.user}
+                            onChange={e => setEditingTx({ ...editingTx, user: e.target.value })}
+                            className="w-full bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700 font-bold"
+                          >
                             <option value={profile.partner1}>{profile.partner1}</option>
                             <option value={profile.partner2}>{profile.partner2}</option>
                           </select>
                         </div>
-                        <div className="flex justify-end gap-2 pt-2">
-                          <button type="button" onClick={() => setEditingTx(null)} className="px-3 py-2 text-slate-400 hover:text-white font-bold">Cancelar</button>
-                          <button type="submit" className="px-4 py-2 bg-emerald-500 text-white font-bold rounded-xl">Salvar Alterações</button>
+
+                        <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                          <button
+                            type="button"
+                            onClick={() => setEditingTx(null)}
+                            className="px-3.5 py-2 text-slate-400 hover:text-white font-bold cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow cursor-pointer transition"
+                          >
+                            Salvar Alterações
+                          </button>
                         </div>
                       </form>
                     </div>

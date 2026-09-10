@@ -3,7 +3,7 @@
 export const CATEGORIES_CONFIG = {
   // NECESSIDADES (50%)
   Alimentação: { pillar: 'needs', icon: '🛒', color: '#10b981', keywords: ['mercado', 'supermercado', 'feira', 'padaria', 'sacolão', 'açougue', 'compras mês', 'arroz', 'carne'] },
-  Moradia: { pillar: 'needs', icon: '🏠', color: '#3b82f6', keywords: ['aluguel', 'condomínio', 'iptu', 'reforma', 'gás', 'manutenção casa'] },
+  Moradia: { pillar: 'needs', icon: '🏠', color: '#3b82f6', keywords: ['aluguel', 'apartamento', 'condomínio', 'iptu', 'reforma', 'gás', 'manutenção casa'] },
   'Contas Essenciais': { pillar: 'needs', icon: '💡', color: '#06b6d4', keywords: ['luz', 'energia', 'água', 'saneamento', 'internet', 'wifi', 'celular', 'plano celular'] },
   Saúde: { pillar: 'needs', icon: '💊', color: '#ec4899', keywords: ['farmácia', 'remédio', 'médico', 'consulta', 'exame', 'plano de saúde', 'dentista'] },
   Transporte: { pillar: 'needs', icon: '🚗', color: '#6366f1', keywords: ['combustível', 'gasolina', 'etanol', 'uber', '99', 'ônibus', 'metrô', 'estacionamento', 'ipva', 'mecânico'] },
@@ -13,14 +13,19 @@ export const CATEGORIES_CONFIG = {
   Restaurante: { pillar: 'wants', icon: '🍽️', color: '#f97316', keywords: ['restaurante', 'almoço fora', 'jantar', 'iFood', 'delivery', 'pizza', 'hambúrguer', 'lanche', 'bar', 'cerveja', 'café'] },
   'Assinaturas & Tech': { pillar: 'wants', icon: '📺', color: '#8b5cf6', keywords: ['netflix', 'spotify', 'prime', 'disney', 'youtube', 'hbomax', 'game', 'psn', 'xbox', 'steam', 'chatgpt'] },
   'Compras Pessoais': { pillar: 'wants', icon: '🛍️', color: '#d946ef', keywords: ['roupa', 'sapato', 'tênis', 'cosmético', 'maquiagem', 'presente', 'salão', 'barbeiro', 'cabelo', 'shopping'] },
+  'Outros Gastos': { pillar: 'wants', icon: '📦', color: '#94a3b8', keywords: ['outros', 'gasto', 'despesa', 'avulso'] },
 
   // FUTURO (20%)
   'Reserva de Emergência': { pillar: 'future', icon: '🛡️', color: '#10b981', keywords: ['reserva', 'emergência', 'guardar', 'poupança', 'reserva de emergência'] },
   Investimentos: { pillar: 'future', icon: '📈', color: '#059669', keywords: ['investimento', 'ações', 'fii', 'tesouro', 'cdb', 'cripto', 'btc', 'aporte'] },
-  'Quitação de Dívidas': { pillar: 'future', icon: '⚖️', color: '#14b8a6', keywords: ['dívida', 'empréstimo', 'acordo', 'parcela', 'quitação', 'renegociação'] },
 
-  // RECEITAS
-  'Salário & Rendimentos': { pillar: 'income', icon: '💰', color: '#22c55e', keywords: ['salário', 'pagamento', 'proventos', 'freelance', 'pix recebido', 'venda', 'extra', 'rendimento', 'bônus', 'décimo'] }
+  // ENTRADAS / RENDA
+  'Salário & Rendimentos': { pillar: 'income', icon: '💰', color: '#22c55e', keywords: ['salário', 'salario', 'pagamento', 'prolabore', 'remuneração'] },
+  'Freelance & Bicos': { pillar: 'income', icon: '💻', color: '#10b981', keywords: ['freelance', 'freela', 'bico', 'job', 'serviço'] },
+  'Vendas & Extras': { pillar: 'income', icon: '🏷️', color: '#34d399', keywords: ['venda', 'vendi', 'desapego', 'extra', 'comissão', 'comissao', 'bônus', 'bonus'] },
+  'Rendimentos & Dividendos': { pillar: 'income', icon: '📊', color: '#059669', keywords: ['rendimento', 'dividendo', 'juros', 'lucro'] },
+  'Reembolso & Cashback': { pillar: 'income', icon: '🔄', color: '#14b8a6', keywords: ['reembolso', 'cashback', 'estorno'] },
+  'Outras Entradas': { pillar: 'income', icon: '✨', color: '#6ee7b7', keywords: ['pix', 'receita', 'recebi', 'ganhei', 'ganho', 'faturei', 'faturamento', 'depósito', 'deposito', 'entrada'] }
 };
 
 function escapeRegExp(string) {
@@ -81,26 +86,26 @@ export function parseTransactionMessage(text, currentUserName = 'Kevin') {
   }
 
   // 2. Determinar se é Receita ou Despesa
-  const isIncomeKeyword = CATEGORIES_CONFIG['Salário & Rendimentos'].keywords.some(kw => lower.includes(kw)) || lower.includes('receita') || lower.includes('ganhei');
-  const type = isIncomeKeyword ? 'income' : 'expense';
+  const incomeCategories = Object.entries(CATEGORIES_CONFIG).filter(([_, cfg]) => cfg.pillar === 'income');
+  const incomeKeywords = incomeCategories.flatMap(([_, cfg]) => cfg.keywords);
+  const isIncome = incomeKeywords.some(kw => lower.includes(kw));
+  const type = isIncome ? 'income' : 'expense';
 
   // 3. Encontrar Categoria e Pilar
-  let matchedCategory = type === 'income' ? 'Salário & Rendimentos' : 'Outros';
-  let matchedPillar = type === 'income' ? 'income' : 'wants'; // Default para gastos avulsos se não encontrar
+  let matchedCategory = isIncome ? 'Salário & Rendimentos' : 'Outros Gastos';
+  let matchedPillar = isIncome ? 'income' : 'wants'; // Default para gastos avulsos se não encontrar
 
-  if (type === 'expense') {
-    let bestScore = 0;
+  let bestScore = 0;
+  for (const [catName, config] of Object.entries(CATEGORIES_CONFIG)) {
+    if (isIncome && config.pillar !== 'income') continue;
+    if (!isIncome && config.pillar === 'income') continue;
 
-    for (const [catName, config] of Object.entries(CATEGORIES_CONFIG)) {
-      if (catName === 'Salário & Rendimentos') continue;
-
-      for (const kw of config.keywords) {
-        if (lower.includes(kw)) {
-          if (kw.length > bestScore) {
-            bestScore = kw.length;
-            matchedCategory = catName;
-            matchedPillar = config.pillar;
-          }
+    for (const kw of config.keywords) {
+      if (lower.includes(kw)) {
+        if (kw.length > bestScore) {
+          bestScore = kw.length;
+          matchedCategory = catName;
+          matchedPillar = config.pillar;
         }
       }
     }
