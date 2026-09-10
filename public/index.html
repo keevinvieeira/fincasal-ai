@@ -305,11 +305,50 @@
 
       function App() {
         const [tab, setTab] = useState('chat');
-        const [selectedMonth, setSelectedMonth] = useState('2026-07');
         const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
         const [isSynced, setIsSynced] = useState(false);
 
-        const [profile, setProfileState] = useState({ partner1: 'Kevin', partner2: 'Milena', incomePartner1: 5000, incomePartner2: 4500, avatar1: '💙', avatar2: '💜' });
+        // Carrega instantaneamente o estado salvo localmente (Zero atraso / Sem tela vazia no F5)
+        const loadLocalSnapshot = () => {
+          try {
+            const raw = localStorage.getItem('fincasal_local_db');
+            if (raw) return JSON.parse(raw);
+          } catch (e) {}
+          return null;
+        };
+        const cachedDb = loadLocalSnapshot();
+
+        // Mês selecionado com persistência no navegador
+        const [selectedMonth, setSelectedMonthState] = useState(() => {
+          try {
+            const saved = localStorage.getItem('fincasal_selected_month');
+            if (saved) return saved;
+          } catch (e) {}
+          const now = new Date();
+          const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+          return MONTHS_LIST.some(m => m.key === currentKey) ? currentKey : '2026-07';
+        });
+
+        const setSelectedMonth = (m) => {
+          try { localStorage.setItem('fincasal_selected_month', m); } catch (e) {}
+          setSelectedMonthState(m);
+        };
+
+        // Usuário ativo (Kevin ou Milena) lembrado individualmente no dispositivo
+        const [activeUser, setActiveUserState] = useState(() => {
+          try {
+            return localStorage.getItem('fincasal_active_user') || 'Kevin';
+          } catch (e) {
+            return 'Kevin';
+          }
+        });
+
+        const setActiveUser = (u) => {
+          try { localStorage.setItem('fincasal_active_user', u); } catch (e) {}
+          setActiveUserState(u);
+        };
+
+        const [profile, setProfileState] = useState(() => cachedDb?.profile || { partner1: 'Kevin', partner2: 'Milena', incomePartner1: 5000, incomePartner2: 4500, avatar1: '💙', avatar2: '💜' });
         const GAMIFICATION_LEVELS = [
           { level: 1, minXP: 0, title: 'Iniciantes das Finanças 🌱', nextXP: 100 },
           { level: 2, minXP: 100, title: 'Casal Organizado 📊', nextXP: 300 },
@@ -406,11 +445,15 @@
           }
         };
 
-        const [activeUser, setActiveUser] = useState('Kevin');
-        const [config, setConfigState] = useState({ targetNeeds: 60, targetWants: 25, targetFuture: 15 });
-        const [transactions, setTransactionsState] = useState([]);
-        const [chatMessages, setChatMessagesState] = useState([]);
-        const [gamification, setGamificationState] = useState({
+        const [config, setConfigState] = useState(() => cachedDb?.config || { targetNeeds: 60, targetWants: 25, targetFuture: 15 });
+        const [transactions, setTransactionsState] = useState(() => Array.isArray(cachedDb?.transactions) ? cachedDb.transactions : []);
+        const [chatMessages, setChatMessagesState] = useState(() => Array.isArray(cachedDb?.chatMessages) ? cachedDb.chatMessages : []);
+        const [wishlist, setWishlistState] = useState(() => Array.isArray(cachedDb?.wishlist) ? cachedDb.wishlist : []);
+        const [deletedTxIds, setDeletedTxIdsState] = useState(() => Array.isArray(cachedDb?.deletedTxIds) ? cachedDb.deletedTxIds : []);
+        const [deletedWishIds, setDeletedWishIdsState] = useState(() => Array.isArray(cachedDb?.deletedWishIds) ? cachedDb.deletedWishIds : []);
+        const [chatClearedAt, setChatClearedAtState] = useState(() => cachedDb?.chatClearedAt || 0);
+
+        const [gamification, setGamificationState] = useState(() => cachedDb?.gamification || {
           level: 1,
           levelTitle: 'Iniciantes das Finanças 🌱',
           xp: 0,
@@ -426,7 +469,6 @@
             { id: 'b3', icon: '🛍️', title: 'Primeiro Desejo Realizado', description: 'Comprou um item da Wishlist com XP', unlocked: false }
           ]
         });
-        const [wishlist, setWishlistState] = useState([]);
 
         const [coupleCode, setCoupleCodeState] = useState(() => {
           try {
@@ -445,36 +487,33 @@
         };
 
         const isLocalChange = useRef(false);
-        const lastUpdatedAt = useRef(Date.now());
+        // lastUpdatedAt inicializado com o timestamp salvo do banco/local (evita rejeição indevida ao dar F5)
+        const lastUpdatedAt = useRef(cachedDb?.updatedAt || 0);
 
         const stateRef = useRef({});
-        stateRef.current = { profile, config, transactions, chatMessages, gamification, wishlist };
+        stateRef.current = { profile, config, transactions, chatMessages, gamification, wishlist, deletedTxIds, deletedWishIds, chatClearedAt };
 
         const syncTimerRef = useRef(null);
 
         const NTFY_TOPIC = 'fincasal_room_' + coupleCode.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
-        const mergeItems = (prev = [], next = []) => {
-          if (!Array.isArray(next)) return prev;
-          if (!Array.isArray(prev)) return next;
-          const map = new Map();
-          prev.forEach(item => { if (item && item.id) map.set(item.id, item); });
-          next.forEach(item => { if (item && item.id) map.set(item.id, item); });
-          return Array.from(map.values());
-        };
-
-        const broadcastAtomicState = () => {
+        // Salva instantaneamente no LocalStorage para garantir tolerância total a recarregamentos de página (F5)
+        const persistSnapshotLocally = (overrides = {}) => {
           const now = Date.now();
           lastUpdatedAt.current = now;
-
           const fullSnapshot = {
             ...stateRef.current,
+            ...overrides,
             updatedAt: now
           };
-
           try {
             localStorage.setItem('fincasal_local_db', JSON.stringify(fullSnapshot));
           } catch (e) {}
+          return fullSnapshot;
+        };
+
+        const broadcastAtomicState = (overrides = {}) => {
+          const fullSnapshot = persistSnapshotLocally(overrides);
 
           // Transmissão do Estado Atômico Completo em tempo real (< 100ms) sem corrida de dados
           fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
@@ -490,18 +529,20 @@
           }).catch(err => console.warn('Sync offline'));
         };
 
-        const triggerSync = () => {
+        const triggerSync = (overrides = {}) => {
           isLocalChange.current = true;
+          // Salva localmente de imediato (0ms) para que um refresh não perca dados
+          persistSnapshotLocally(overrides);
           if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
           syncTimerRef.current = setTimeout(() => {
-            broadcastAtomicState();
+            broadcastAtomicState(overrides);
           }, 150);
         };
 
         const setTransactions = (updater) => {
           setTransactionsState(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            triggerSync();
+            triggerSync({ transactions: next });
             return next;
           });
         };
@@ -509,7 +550,7 @@
         const setChatMessages = (updater) => {
           setChatMessagesState(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            triggerSync();
+            triggerSync({ chatMessages: next });
             return next;
           });
         };
@@ -517,7 +558,7 @@
         const setGamification = (updater) => {
           setGamificationState(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            triggerSync();
+            triggerSync({ gamification: next });
             return next;
           });
         };
@@ -525,7 +566,7 @@
         const setWishlist = (updater) => {
           setWishlistState(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            triggerSync();
+            triggerSync({ wishlist: next });
             return next;
           });
         };
@@ -533,7 +574,7 @@
         const setConfig = (updater) => {
           setConfigState(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            triggerSync();
+            triggerSync({ config: next });
             return next;
           });
         };
@@ -541,75 +582,131 @@
         const setProfile = (updater) => {
           setProfileState(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
-            triggerSync();
+            triggerSync({ profile: next });
             return next;
           });
         };
 
         useEffect(() => {
-          const applyStateData = (data) => {
-            if (!data) return;
-            if (data.updatedAt && data.updatedAt < lastUpdatedAt.current) {
+          const applyStateData = (data, isInitial = false) => {
+            if (!data || typeof data !== 'object') return;
+
+            // Se for update remoto via SSE/poll e tiver updatedAt mais antigo que o nosso, ignorar
+            if (!isInitial && data.updatedAt && data.updatedAt < lastUpdatedAt.current) {
               return;
             }
             if (data.updatedAt) {
-              lastUpdatedAt.current = data.updatedAt;
+              lastUpdatedAt.current = Math.max(lastUpdatedAt.current, data.updatedAt);
             }
 
             if (data.profile) setProfileState(data.profile);
             if (data.config) setConfigState(data.config);
 
-            let updatedLocalState = {};
-            try {
-              updatedLocalState = JSON.parse(localStorage.getItem('fincasal_local_db') || '{}');
-            } catch (e) {}
+            // 1. Tombstones de deleção consolidados
+            const remoteDelTx = new Set(data.deletedTxIds || []);
+            const localDelTx = new Set(deletedTxIds || []);
+            const allDelTx = new Set([...remoteDelTx, ...localDelTx]);
+            if (allDelTx.size > 0) {
+              setDeletedTxIdsState(Array.from(allDelTx));
+            }
 
+            // 2. MESCLAGEM INTELIGENTE DE TRANSAÇÕES (Kevin + Milena)
             if (data.transactions && Array.isArray(data.transactions)) {
-              setTransactionsState(prev => {
-                const merged = mergeItems(prev, data.transactions);
-                updatedLocalState.transactions = merged;
-                return merged;
-              });
-            }
-            if (data.chatMessages && Array.isArray(data.chatMessages)) {
-              setChatMessagesState(prev => {
-                const merged = mergeItems(prev, data.chatMessages);
-                updatedLocalState.chatMessages = merged;
-                return merged;
-              });
-            }
-            if (data.wishlist && Array.isArray(data.wishlist)) {
-              setWishlistState(prev => {
-                const merged = mergeItems(prev, data.wishlist);
-                updatedLocalState.wishlist = merged;
-                return merged;
-              });
-            }
-            if (data.gamification) setGamificationState(data.gamification);
+              setTransactionsState(currentLocalTx => {
+                const txMap = new Map();
+                // Transações locais válidas não deletadas
+                (currentLocalTx || []).forEach(t => {
+                  if (t && t.id && !allDelTx.has(t.id)) txMap.set(t.id, t);
+                });
+                // Transações remotas válidas não deletadas
+                data.transactions.forEach(t => {
+                  if (t && t.id && !allDelTx.has(t.id)) txMap.set(t.id, t);
+                });
+                const merged = Array.from(txMap.values()).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
-            try {
-              localStorage.setItem('fincasal_local_db', JSON.stringify(updatedLocalState));
-            } catch (e) {}
+                persistSnapshotLocally({ transactions: merged, deletedTxIds: Array.from(allDelTx) });
+                return merged;
+              });
+            }
+
+            // 3. MESCLAGEM DE MENSAGENS DO CHAT
+            const remoteClearedAt = data.chatClearedAt || 0;
+            const effectiveClearedAt = Math.max(chatClearedAt || 0, remoteClearedAt);
+            if (effectiveClearedAt > (chatClearedAt || 0)) {
+              setChatClearedAtState(effectiveClearedAt);
+            }
+
+            if (data.chatMessages && Array.isArray(data.chatMessages)) {
+              setChatMessagesState(currentLocalMsgs => {
+                const msgMap = new Map();
+                (currentLocalMsgs || []).forEach(m => {
+                  if (m && m.id && (!effectiveClearedAt || Number(m.id) > effectiveClearedAt)) {
+                    msgMap.set(m.id, m);
+                  }
+                });
+                data.chatMessages.forEach(m => {
+                  if (m && m.id && (!effectiveClearedAt || Number(m.id) > effectiveClearedAt)) {
+                    msgMap.set(m.id, m);
+                  }
+                });
+                const merged = Array.from(msgMap.values()).sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+
+                persistSnapshotLocally({ chatMessages: merged, chatClearedAt: effectiveClearedAt });
+                return merged;
+              });
+            }
+
+            // 4. MESCLAGEM DE LISTA DE DESEJOS
+            const remoteDelWish = new Set(data.deletedWishIds || []);
+            const localDelWish = new Set(deletedWishIds || []);
+            const allDelWish = new Set([...remoteDelWish, ...localDelWish]);
+            if (allDelWish.size > 0) {
+              setDeletedWishIdsState(Array.from(allDelWish));
+            }
+
+            if (data.wishlist && Array.isArray(data.wishlist)) {
+              setWishlistState(currentLocalWish => {
+                const wMap = new Map();
+                (currentLocalWish || []).forEach(w => {
+                  if (w && w.id && !allDelWish.has(w.id)) wMap.set(w.id, w);
+                });
+                data.wishlist.forEach(w => {
+                  if (w && w.id && !allDelWish.has(w.id)) wMap.set(w.id, w);
+                });
+                const merged = Array.from(wMap.values());
+                persistSnapshotLocally({ wishlist: merged, deletedWishIds: Array.from(allDelWish) });
+                return merged;
+              });
+            }
+
+            if (data.gamification) {
+              setGamificationState(prevG => ({
+                ...prevG,
+                ...data.gamification,
+                quests: data.gamification.quests || prevG.quests,
+                badges: data.gamification.badges || prevG.badges
+              }));
+            }
 
             setIsSynced(true);
           };
 
-          // Busca inicial do banco de dados KV / LocalStorage
+          // Busca inicial do banco de dados KV / LocalStorage (isInitial = true evita descarte)
           const fetchSync = (isInitial = false) => {
             fetch('/api/sync?_t=' + Date.now(), { cache: 'no-store' })
               .then(res => {
-                if (!res.ok) throw new Error('Servidor backend não encontrado neste domínio');
+                if (!res.ok) throw new Error('Servidor backend não encontrado');
                 return res.json();
               })
               .then(data => {
-                applyStateData(data);
+                applyStateData(data, isInitial);
               }).catch(e => {
                 if (isInitial) {
                   try {
                     const local = localStorage.getItem('fincasal_local_db');
                     if (local) {
                       const data = JSON.parse(local);
-                      applyStateData(data);
+                      applyStateData(data, true);
                     }
                   } catch (err) {}
                 }
@@ -627,7 +724,7 @@
                 const payload = JSON.parse(event.data);
                 if (payload && payload.message) {
                   const data = JSON.parse(payload.message);
-                  applyStateData(data);
+                  applyStateData(data, false);
                 }
               } catch (err) {}
             };
@@ -658,7 +755,10 @@
 
         const handleClearChat = () => {
           if (confirm('🧹 Deseja zerar/limpar todo o histórico de conversas do Chat para ambos os dispositivos?')) {
-            setChatMessages([]);
+            const clearTime = Date.now();
+            setChatClearedAtState(clearTime);
+            setChatMessagesState([]);
+            triggerSync({ chatMessages: [], chatClearedAt: clearTime });
           }
         };
 
@@ -674,10 +774,12 @@
             completed: false
           };
 
-          setGamification(g => ({
-            ...g,
-            quests: [...(g.quests || []), newQ]
-          }));
+          const nextGam = {
+            ...gamification,
+            quests: [...(gamification.quests || []), newQ]
+          };
+          setGamificationState(nextGam);
+          triggerSync({ gamification: nextGam });
 
           setNewQuestTitle('');
           setNewQuestDesc('');
@@ -688,43 +790,29 @@
         const handleSaveEditQuest = (e) => {
           if (e) e.preventDefault();
           if (!editingQuest || !editingQuest.title.trim()) return;
-          setGamification(g => ({
-            ...g,
-            quests: (g.quests || []).map(q => q.id === editingQuest.id ? editingQuest : q)
-          }));
+          const updatedQuests = (gamification.quests || []).map(q => q.id === editingQuest.id ? editingQuest : q);
+          const nextGam = computeXPState(transactions, updatedQuests, wishlist, gamification);
+          setGamificationState(nextGam);
+          triggerSync({ gamification: nextGam });
           setEditingQuest(null);
         };
 
         const handleDeleteQuest = (id) => {
           if (confirm('🗑️ Deseja excluir esta missão?')) {
-            setGamification(g => ({
-              ...g,
-              quests: (g.quests || []).filter(q => q.id !== id)
-            }));
+            const updatedQuests = (gamification.quests || []).filter(q => q.id !== id);
+            const nextGam = computeXPState(transactions, updatedQuests, wishlist, gamification);
+            setGamificationState(nextGam);
+            triggerSync({ gamification: nextGam });
           }
         };
 
         const handleToggleQuestComplete = (quest) => {
           const isCompleting = !quest.completed;
-          setGamification(g => {
-            const updatedQuests = (g.quests || []).map(q => q.id === quest.id ? { ...q, completed: isCompleting } : q);
-            const addedXP = isCompleting ? quest.rewardXP : -quest.rewardXP;
-            const newXP = Math.max(0, (g.xp || 0) + addedXP);
-            const lvlInfo = calculateLevelFromXP(newXP);
-
-            if (isCompleting) {
-              triggerCelebration('income');
-            }
-
-            return {
-              ...g,
-              quests: updatedQuests,
-              xp: newXP,
-              level: lvlInfo.level,
-              levelTitle: lvlInfo.levelTitle,
-              xpNextLevel: lvlInfo.xpNextLevel
-            };
-          });
+          if (isCompleting) triggerCelebration('income');
+          const updatedQuests = (gamification.quests || []).map(q => q.id === quest.id ? { ...q, completed: isCompleting } : q);
+          const nextGam = computeXPState(transactions, updatedQuests, wishlist, gamification);
+          setGamificationState(nextGam);
+          triggerSync({ gamification: nextGam });
         };
 
         const messagesEndRef = useRef(null);
@@ -745,10 +833,16 @@
         // Ações do Extrato
         const handleDeleteTx = (id) => {
           if (confirm('Deseja realmente apagar este lançamento do extrato?')) {
-            setTransactions(prev => {
-              const nextTx = prev.filter(t => t.id !== id);
-              setGamification(prevG => computeXPState(nextTx, gamification.quests, wishlist, prevG));
-              return nextTx;
+            const nextTx = transactions.filter(t => t.id !== id);
+            const nextDel = Array.from(new Set([...deletedTxIds, id]));
+            setDeletedTxIdsState(nextDel);
+            setTransactionsState(nextTx);
+            const nextGam = computeXPState(nextTx, gamification.quests, wishlist, gamification);
+            setGamificationState(nextGam);
+            triggerSync({
+              transactions: nextTx,
+              deletedTxIds: nextDel,
+              gamification: nextGam
             });
           }
         };
@@ -756,11 +850,11 @@
         const handleSaveEditTx = (e) => {
           e.preventDefault();
           if (!editingTx) return;
-          setTransactions(prev => {
-            const nextTx = prev.map(t => t.id === editingTx.id ? editingTx : t);
-            setGamification(prevG => computeXPState(nextTx, gamification.quests, wishlist, prevG));
-            return nextTx;
-          });
+          const nextTx = transactions.map(t => t.id === editingTx.id ? editingTx : t);
+          setTransactionsState(nextTx);
+          const nextGam = computeXPState(nextTx, gamification.quests, wishlist, gamification);
+          setGamificationState(nextGam);
+          triggerSync({ transactions: nextTx, gamification: nextGam });
           setEditingTx(null);
         };
 
@@ -773,8 +867,8 @@
           const xpReq = calculateRequiredXP(price);
 
           const newItem = {
-            id: Date.now().toString(),
-            name: newWishName,
+            id: 'wish-' + Date.now().toString() + Math.random().toString(36).substr(2, 4),
+            name: newWishName.trim(),
             price,
             category: newWishCategory,
             purchased: false,
@@ -782,7 +876,9 @@
             addedBy: activeUser
           };
 
-          setWishlist(prev => [newItem, ...prev]);
+          const nextWish = [newItem, ...wishlist];
+          setWishlistState(nextWish);
+          triggerSync({ wishlist: nextWish });
           setIsAddWishModalOpen(false);
           setNewWishName('');
           setNewWishPrice('');
@@ -790,10 +886,16 @@
 
         const handleDeleteWishItem = (id) => {
           if (confirm('Deseja remover este item da lista de desejos?')) {
-            setWishlist(prev => {
-              const nextW = prev.filter(w => w.id !== id);
-              setGamification(prevG => computeXPState(transactions, gamification.quests, nextW, prevG));
-              return nextW;
+            const nextWish = wishlist.filter(w => w.id !== id);
+            const nextDelWish = Array.from(new Set([...deletedWishIds, id]));
+            setDeletedWishIdsState(nextDelWish);
+            setWishlistState(nextWish);
+            const nextGam = computeXPState(transactions, gamification.quests, nextWish, gamification);
+            setGamificationState(nextGam);
+            triggerSync({
+              wishlist: nextWish,
+              deletedWishIds: nextDelWish,
+              gamification: nextGam
             });
           }
         };
@@ -802,7 +904,9 @@
           e.preventDefault();
           if (!editingWishItem) return;
           const updatedReqXP = calculateRequiredXP(editingWishItem.price);
-          setWishlist(prev => prev.map(w => w.id === editingWishItem.id ? { ...editingWishItem, xpRequired: updatedReqXP } : w));
+          const nextWish = wishlist.map(w => w.id === editingWishItem.id ? { ...editingWishItem, xpRequired: updatedReqXP } : w);
+          setWishlistState(nextWish);
+          triggerSync({ wishlist: nextWish });
           setEditingWishItem(null);
         };
 
@@ -819,7 +923,7 @@
             const createdDate = new Date(parseInt(year), parseInt(month) - 1, 15, 12, 0).toISOString();
 
             const buyTx = {
-              id: Date.now().toString(),
+              id: 'tx-wish-' + Date.now().toString() + Math.random().toString(36).substr(2, 4),
               type: 'expense',
               amount: item.price,
               description: `🛍️ [Wishlist] ${item.name}`,
@@ -827,17 +931,22 @@
               pillar: 'wants',
               user: activeUser,
               date: createdDate,
-              monthKey: selectedMonth
+              monthKey: selectedMonth,
+              xpEarned: 0
             };
 
-            setWishlist(prevW => {
-              const nextW = prevW.map(w => w.id === item.id ? { ...w, purchased: true } : w);
-              setTransactions(prevTx => {
-                const nextTx = [buyTx, ...prevTx];
-                setGamification(prevG => computeXPState(nextTx, gamification.quests, nextW, prevG));
-                return nextTx;
-              });
-              return nextW;
+            const nextWish = wishlist.map(w => w.id === item.id ? { ...w, purchased: true } : w);
+            const nextTx = [buyTx, ...transactions];
+            const nextGam = computeXPState(nextTx, gamification.quests, nextWish, gamification);
+
+            setWishlistState(nextWish);
+            setTransactionsState(nextTx);
+            setGamificationState(nextGam);
+
+            triggerSync({
+              wishlist: nextWish,
+              transactions: nextTx,
+              gamification: nextGam
             });
           }
         };
@@ -851,14 +960,16 @@
           const result = parseTransactionMessage(cleanText, activeUser, selectedMonth);
 
           let botMsg = null;
-          if (result.success) {
-            setTransactions(prev => {
-              const nextTx = [result.data, ...prev];
-              setGamification(prevG => computeXPState(nextTx, gamification.quests, wishlist, prevG));
-              return nextTx;
-            });
+          let nextTx = transactions;
+          let nextGam = gamification;
 
-            // DISPARO DE ANIMAÇÃO E SOM DE ACORDO COM O TIPO DE ENTRADA OU SAÍDA
+          if (result.success) {
+            nextTx = [result.data, ...transactions];
+            nextGam = computeXPState(nextTx, gamification.quests, wishlist, gamification);
+
+            setTransactionsState(nextTx);
+            setGamificationState(nextGam);
+
             if (result.type === 'income') {
               triggerCelebration('income'); // Moedas/Estrelas + Som de Aplausos!
             } else {
@@ -870,8 +981,16 @@
             botMsg = { id: (Date.now() + 1).toString(), sender: 'Bot', type: 'bot', content: `🤔 ${result.error}`, timestamp: time };
           }
 
-          setChatMessages(prev => [...prev, userMsg, botMsg]);
+          const nextMsgs = [...chatMessages, userMsg, botMsg];
+          setChatMessagesState(nextMsgs);
           setInputText('');
+
+          // Salva localmente de imediato (0ms) e dispara sincronização
+          triggerSync({
+            transactions: nextTx,
+            chatMessages: nextMsgs,
+            gamification: nextGam
+          });
         };
 
         const handleStartVoiceRecord = () => {

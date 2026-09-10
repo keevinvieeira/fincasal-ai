@@ -1,7 +1,7 @@
 // Cloudflare Workers & Pages Advanced Asset Worker Router
 const JULY_DATE = '2026-07-15T12:00:00.000Z';
 const JULY_KEY = '2026-07';
-const ALLOWED_KEYS = ['profile', 'config', 'transactions', 'chatMessages', 'wishlist', 'gamification'];
+const ALLOWED_KEYS = ['profile', 'config', 'transactions', 'chatMessages', 'wishlist', 'gamification', 'deletedTxIds', 'deletedWishIds', 'chatClearedAt'];
 
 const DEFAULT_STATE = {
   profile: { partner1: 'Kevin', partner2: 'Milena', incomePartner1: 5000, incomePartner2: 4500, avatar1: '💙', avatar2: '💜' },
@@ -108,7 +108,62 @@ export default {
             }
           }
 
-          const updatedData = { ...currentData, ...sanitizedPayload, updatedAt: Date.now() };
+          // 1. Tombstones de deleção consolidados
+          const deletedTxIds = Array.from(new Set([
+            ...(currentData.deletedTxIds || []),
+            ...(sanitizedPayload.deletedTxIds || [])
+          ]));
+
+          const deletedWishIds = Array.from(new Set([
+            ...(currentData.deletedWishIds || []),
+            ...(sanitizedPayload.deletedWishIds || [])
+          ]));
+
+          const chatClearedAt = Math.max(currentData.chatClearedAt || 0, sanitizedPayload.chatClearedAt || 0);
+
+          // 2. Mesclagem inteligente de transações (Kevin + Milena)
+          const currentTx = currentData.transactions || [];
+          const incomingTx = sanitizedPayload.transactions || [];
+          const delTxSet = new Set(deletedTxIds);
+
+          const txMap = new Map();
+          currentTx.forEach(t => { if (t && t.id && !delTxSet.has(t.id)) txMap.set(t.id, t); });
+          incomingTx.forEach(t => { if (t && t.id && !delTxSet.has(t.id)) txMap.set(t.id, t); });
+          const mergedTransactions = Array.from(txMap.values()).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+          // 3. Mesclagem de mensagens do chat
+          const currentMsgs = currentData.chatMessages || [];
+          const incomingMsgs = sanitizedPayload.chatMessages || [];
+          const msgMap = new Map();
+          currentMsgs.forEach(m => {
+            if (m && m.id && (!chatClearedAt || Number(m.id) > chatClearedAt)) msgMap.set(m.id, m);
+          });
+          incomingMsgs.forEach(m => {
+            if (m && m.id && (!chatClearedAt || Number(m.id) > chatClearedAt)) msgMap.set(m.id, m);
+          });
+          const mergedChatMessages = Array.from(msgMap.values()).sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+
+          // 4. Mesclagem de Lista de Desejos
+          const currentWish = currentData.wishlist || [];
+          const incomingWish = sanitizedPayload.wishlist || [];
+          const delWishSet = new Set(deletedWishIds);
+          const wishMap = new Map();
+          currentWish.forEach(w => { if (w && w.id && !delWishSet.has(w.id)) wishMap.set(w.id, w); });
+          incomingWish.forEach(w => { if (w && w.id && !delWishSet.has(w.id)) wishMap.set(w.id, w); });
+          const mergedWishlist = Array.from(wishMap.values());
+
+          const updatedData = {
+            ...currentData,
+            ...sanitizedPayload,
+            transactions: mergedTransactions,
+            chatMessages: mergedChatMessages,
+            wishlist: mergedWishlist,
+            deletedTxIds,
+            deletedWishIds,
+            chatClearedAt,
+            updatedAt: Date.now()
+          };
+
           if (env && env.FINCASAL_KV) {
             await env.FINCASAL_KV.put('dbState', JSON.stringify(updatedData));
           }

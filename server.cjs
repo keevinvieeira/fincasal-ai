@@ -5,7 +5,7 @@ const path = require('path');
 const PORT = process.env.PORT || 5173;
 const DB_FILE = path.join(__dirname, 'db.json');
 
-const ALLOWED_KEYS = ['profile', 'config', 'transactions', 'chatMessages', 'wishlist', 'gamification'];
+const ALLOWED_KEYS = ['profile', 'config', 'transactions', 'chatMessages', 'wishlist', 'gamification', 'deletedTxIds', 'deletedWishIds', 'chatClearedAt'];
 
 // Dados Padrão Iniciais
 const JULY_DATE = '2026-07-15T12:00:00.000Z';
@@ -165,7 +165,60 @@ const server = http.createServer((req, res) => {
           }
         }
 
-        dbState = { ...dbState, ...sanitizedPayload };
+        // 1. Tombstones de deleção consolidados
+        const deletedTxIds = Array.from(new Set([
+          ...(dbState.deletedTxIds || []),
+          ...(sanitizedPayload.deletedTxIds || [])
+        ]));
+
+        const deletedWishIds = Array.from(new Set([
+          ...(dbState.deletedWishIds || []),
+          ...(sanitizedPayload.deletedWishIds || [])
+        ]));
+
+        const chatClearedAt = Math.max(dbState.chatClearedAt || 0, sanitizedPayload.chatClearedAt || 0);
+
+        // 2. Mesclagem inteligente de transações (Kevin + Milena)
+        const currentTx = dbState.transactions || [];
+        const incomingTx = sanitizedPayload.transactions || [];
+        const delTxSet = new Set(deletedTxIds);
+
+        const txMap = new Map();
+        currentTx.forEach(t => { if (t && t.id && !delTxSet.has(t.id)) txMap.set(t.id, t); });
+        incomingTx.forEach(t => { if (t && t.id && !delTxSet.has(t.id)) txMap.set(t.id, t); });
+        const mergedTransactions = Array.from(txMap.values()).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+        // 3. Mesclagem de mensagens do chat
+        const currentMsgs = dbState.chatMessages || [];
+        const incomingMsgs = sanitizedPayload.chatMessages || [];
+        const msgMap = new Map();
+        currentMsgs.forEach(m => {
+          if (m && m.id && (!chatClearedAt || Number(m.id) > chatClearedAt)) msgMap.set(m.id, m);
+        });
+        incomingMsgs.forEach(m => {
+          if (m && m.id && (!chatClearedAt || Number(m.id) > chatClearedAt)) msgMap.set(m.id, m);
+        });
+        const mergedChatMessages = Array.from(msgMap.values()).sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+
+        // 4. Mesclagem de Lista de Desejos
+        const currentWish = dbState.wishlist || [];
+        const incomingWish = sanitizedPayload.wishlist || [];
+        const delWishSet = new Set(deletedWishIds);
+        const wishMap = new Map();
+        currentWish.forEach(w => { if (w && w.id && !delWishSet.has(w.id)) wishMap.set(w.id, w); });
+        incomingWish.forEach(w => { if (w && w.id && !delWishSet.has(w.id)) wishMap.set(w.id, w); });
+        const mergedWishlist = Array.from(wishMap.values());
+
+        dbState = {
+          ...dbState,
+          ...sanitizedPayload,
+          transactions: mergedTransactions,
+          chatMessages: mergedChatMessages,
+          wishlist: mergedWishlist,
+          deletedTxIds,
+          deletedWishIds,
+          chatClearedAt
+        };
         saveDB();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, updatedAt: dbState.updatedAt }));
